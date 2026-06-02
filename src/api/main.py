@@ -17,12 +17,22 @@ from src.models import (
 )
 from src.api.routes_parser import router as parser_router
 from src.api.routes_admin import router as admin_router
+from src.api.routes_setup import router as setup_router
 
 
 tags_metadata = [
     {
         "name": "システム",
         "description": "サーバーの状態確認など、運用用のエンドポイント。",
+    },
+    {
+        "name": "セットアップ",
+        "description": (
+            "月次シフト作成の**土台**を登録します。\n\n"
+            "- **マスタ**（人/役職/ポジション/スキル）… CSVアップロード由来\n"
+            "- **営業情報**（期間/営業時間/ポリシー）… フォーム入力由来\n\n"
+            "Streamlitの「① セットアップ画面」から呼ばれます。"
+        ),
     },
     {
         "name": "パーサ",
@@ -91,6 +101,7 @@ app = FastAPI(
     openapi_tags=tags_metadata,
 )
 
+app.include_router(setup_router)
 app.include_router(parser_router)
 app.include_router(admin_router)
 

@@ -84,6 +84,7 @@ class AvailabilityParams(BaseModel):
     date: date
     start: str          # "HH:MM"
     end: str            # "HH:MM"
+    note: Optional[str] = None  # 日ごとの自由記述（例: "この日は3時間だけ"）。パーサで解釈する
 
 
 class MinRestIntervalParams(BaseModel):

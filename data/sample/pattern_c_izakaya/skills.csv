@@ -1,0 +1,7 @@
+id,name
+sk_cook,調理
+sk_drink,ドリンク作成
+sk_register,レジ
+sk_open,オープン作業
+sk_close,クローズ作業
+sk_lead,リーダー業務

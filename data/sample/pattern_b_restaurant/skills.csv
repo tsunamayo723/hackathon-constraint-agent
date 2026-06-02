@@ -1,0 +1,6 @@
+id,name
+sk_cashier,レジ可
+sk_bar,バー
+sk_kitchen,調理
+sk_open,オープン作業
+sk_close,クローズ作業

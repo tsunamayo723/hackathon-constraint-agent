@@ -207,7 +207,18 @@
 
 入力フロー、承認画面、結果表示、フィードバック。
 
-**ステータス**: 未着手
+**ステータス**: 一部完成（2026-06-02）
+- ✅ ① セットアップ画面（`src/ui/setup.py`）: マスタCSVアップロード + 営業情報フォーム
+- ✅ ② スタッフ入力画面（`src/ui/staff.py`）: 自然言語 → 反映済み/確認中
+- 🔜 ③ 出勤希望CSV登録画面
+- 🔜 ④ 管理者承認画面（`admin.py`）
+- 🔜 ⑤ シフト確認画面（`shift_view.py`）
+
+**関連API（完成）**: `POST/GET /setup/masters`, `POST/GET /setup/frame`
+
+**新たに判明した設計の穴**（`docs/spec/05_setup_io.md` 末尾に記録）:
+- headcount に曜日軸がない（曜日別必要人数を表現できない）
+- availability に priority がない（must/prefer/available の格納先がない）
 
 ---
 

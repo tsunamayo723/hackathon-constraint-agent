@@ -1,0 +1,259 @@
+"""
+ソルバーエンジン（OR-Tools CP-SAT）
+
+SolverInput → 変数組み立て → ハンドラで制約付与 → 求解 → SolverOutput。
+
+OR-Tools 本体（CpModel / CpSolver）はここでだけ触る。
+個々の制約の翻訳はハンドラに任せ、ここは「土台作りと求解」に専念する。
+"""
+
+import time
+from datetime import date
+
+from ortools.sat.python import cp_model
+
+from src.handlers import get_handler
+from src.models.parser_io import UntranslatedConstraint
+from src.models.solver_io import (
+    Assignment,
+    BlockingConstraint,
+    SolverInput,
+    SolverMeta,
+    SolverOutput,
+    SolverWarning,
+)
+from .context import SolverContext
+from .slots import Slot, build_day_slots, date_range
+
+# 求解の打ち切り時間（秒）。デモ規模なら十分。
+TIME_LIMIT_SEC = 10.0
+DEFAULT_SEED = 42
+
+
+def solve(
+    spec: SolverInput,
+    pending: list[UntranslatedConstraint] | None = None,
+) -> SolverOutput:
+    """
+    シフトを計算する。
+
+    pending（未翻訳の要望）が非空なら、結果は「暫定版（provisional）」になる。
+    """
+    pending = pending or []
+    started = time.perf_counter()
+
+    days = date_range(spec.frame.period.start, spec.frame.period.end)
+    slots = build_day_slots(
+        spec.frame.operating_window.open,
+        spec.frame.operating_window.close,
+        spec.frame.operating_window.slot_minutes,
+    )
+
+    model = cp_model.CpModel()
+    ctx = SolverContext(model=model, days=days, slots=slots, masters=spec.masters)
+
+    _build_variables(ctx)
+
+    # ── ハンドラ実行（type → 制約翻訳） ──────────────────────────
+    warnings: list[SolverWarning] = []
+    for c in spec.constraints:
+        handler = get_handler(c.type)
+        if handler is None:
+            # 最小ソルバー未対応のタイプ。黙って捨てず警告で明示する。
+            warnings.append(SolverWarning(type=f"unhandled:{c.type}"))
+            continue
+        handler(c.params, ctx)
+
+    # availability は全件出そろってから適用（枠外コマを0に固定）
+    _apply_availability(ctx)
+
+    # ── 目的関数 ────────────────────────────────────────────────
+    # ソフト罰金の合計 ＋ 総割当数（過剰配置を抑える軽い項）
+    penalty_terms = [w * z for (w, z) in ctx.penalties]
+    total_assigned = list(ctx.x.values())
+    model.Minimize(sum(penalty_terms) + sum(total_assigned))
+
+    # ── 求解 ────────────────────────────────────────────────────
+    solver = cp_model.CpSolver()
+    solver.parameters.max_time_in_seconds = TIME_LIMIT_SEC
+    solver.parameters.random_seed = DEFAULT_SEED
+    result = solver.Solve(model)
+
+    elapsed_ms = int((time.perf_counter() - started) * 1000)
+
+    shift_status = "provisional" if pending else "confirmed"
+
+    if result in (cp_model.OPTIMAL, cp_model.FEASIBLE):
+        assignments = _extract_assignments(ctx, solver)
+        return SolverOutput(
+            status="solved",
+            shift_status=shift_status,
+            meta=SolverMeta(
+                seed=DEFAULT_SEED,
+                elapsed_ms=elapsed_ms,
+                objective=int(solver.ObjectiveValue()),
+            ),
+            assignments=assignments,
+            warnings=warnings,
+            pending_constraints=pending,
+        )
+
+    if result == cp_model.INFEASIBLE:
+        return SolverOutput(
+            status="infeasible",
+            shift_status=shift_status,
+            meta=SolverMeta(seed=DEFAULT_SEED, elapsed_ms=elapsed_ms, objective=0),
+            warnings=warnings,
+            blocking_constraints=_diagnose_infeasible(spec, ctx),
+            pending_constraints=pending,
+        )
+
+    # UNKNOWN / MODEL_INVALID 等は時間切れ扱いにまとめる
+    return SolverOutput(
+        status="timeout",
+        shift_status=shift_status,
+        meta=SolverMeta(seed=DEFAULT_SEED, elapsed_ms=elapsed_ms, objective=0),
+        warnings=warnings,
+        pending_constraints=pending,
+    )
+
+
+# ═══════════════════════════════════════════════════════════════════
+#  内部ヘルパー
+# ═══════════════════════════════════════════════════════════════════
+
+
+def _build_variables(ctx: SolverContext) -> None:
+    """割当変数 x / 在席 present / 出勤 work_day を作り、関係を結ぶ。"""
+    model = ctx.model
+
+    for pi, pid in enumerate(ctx.person_ids):
+        for di in range(len(ctx.days)):
+            day_present_vars = []
+            for slot in ctx.slots:
+                # この人・この日・このコマの、各ポジションへの割当
+                pos_vars = []
+                for pos_id in ctx.position_ids:
+                    v = model.NewBoolVar(f"x_{pid}_{di}_{slot.index}_{pos_id}")
+                    ctx.x[(pid, di, slot.index, pos_id)] = v
+                    pos_vars.append(v)
+
+                # 在席 = 各ポジション割当の合計（==present で1コマ1ポジションを強制）
+                present = model.NewBoolVar(f"present_{pid}_{di}_{slot.index}")
+                model.Add(sum(pos_vars) == present)
+                ctx.present[(pid, di, slot.index)] = present
+                day_present_vars.append(present)
+
+            # 出勤 = その日のいずれかのコマに在席（OR）
+            wd = model.NewBoolVar(f"workday_{pid}_{di}")
+            model.AddMaxEquality(wd, day_present_vars)
+            ctx.work_day[(pid, di)] = wd
+
+
+def _apply_availability(ctx: SolverContext) -> None:
+    """
+    出勤希望ベースの固定。
+
+    availability に1件でも登録のある人は「出した枠の中だけ」入れる:
+      - 希望を出した日: その枠外のコマは present=0
+      - 希望を出していない日: その日は終日 present=0
+    availability が1件も無い人は無制限（小さなサンプルでも動くように）。
+    """
+    for pid, day_windows in ctx.availability.items():
+        for di in range(len(ctx.days)):
+            windows = day_windows.get(di)
+            for slot in ctx.slots:
+                allowed = False
+                if windows:
+                    allowed = any(slot.is_within(s, e) for (s, e) in windows)
+                if not allowed:
+                    ctx.model.Add(ctx.present[(pid, di, slot.index)] == 0)
+
+
+def _extract_assignments(ctx: SolverContext, solver: cp_model.CpSolver) -> list[Assignment]:
+    """
+    解から割当を取り出す。読みやすさのため、同じ人・同じポジションで
+    連続するコマは1つの勤務ブロックにまとめる。
+    """
+    assignments: list[Assignment] = []
+
+    for pid in ctx.person_ids:
+        for di, day in enumerate(ctx.days):
+            for pos_id in ctx.position_ids:
+                # この人・この日・このポジションで割当のあるコマを時系列に集める
+                on_slots = [
+                    slot
+                    for slot in ctx.slots
+                    if solver.Value(ctx.x[(pid, di, slot.index, pos_id)]) == 1
+                ]
+                if not on_slots:
+                    continue
+                # 連続するコマをまとめる
+                for block in _merge_consecutive(on_slots):
+                    assignments.append(Assignment(
+                        date=day,
+                        person_id=pid,
+                        position_id=pos_id,
+                        start=block[0].start,
+                        end=block[-1].end,
+                    ))
+    return assignments
+
+
+def _merge_consecutive(on_slots: list[Slot]) -> list[list[Slot]]:
+    """時刻順のコマ列を、隣り合うものごとのブロックに分割する。"""
+    on_slots = sorted(on_slots, key=lambda s: s.start_min)
+    blocks: list[list[Slot]] = []
+    for slot in on_slots:
+        if blocks and blocks[-1][-1].end_min == slot.start_min:
+            blocks[-1].append(slot)
+        else:
+            blocks.append([slot])
+    return blocks
+
+
+def _is_available(ctx: SolverContext, pid: str, di: int, slot: Slot) -> bool:
+    """診断用: その人がそのコマに入れる可能性があるか（availability考慮）。"""
+    day_windows = ctx.availability.get(pid)
+    if day_windows is None:
+        return True  # 無制限の人
+    windows = day_windows.get(di)
+    if not windows:
+        return False
+    return any(slot.is_within(s, e) for (s, e) in windows)
+
+
+def _diagnose_infeasible(spec: SolverInput, ctx: SolverContext) -> list[BlockingConstraint]:
+    """
+    充足不能のとき、headcount のどこで人が足りないかを簡易診断する。
+    （厳密な証明ではなく、よくある「可用人数 < 必要人数」を探す）
+    """
+    from src.solver.slots import hhmm_to_min
+
+    blocking: list[BlockingConstraint] = []
+    for c in spec.constraints:
+        if c.type != "headcount_requirement":
+            continue
+        p = c.params
+        win_start = hhmm_to_min(p.time_start)
+        win_end = hhmm_to_min(p.time_end)
+        for di, day in enumerate(ctx.days):
+            for slot in ctx.slots:
+                if not slot.is_within(win_start, win_end):
+                    continue
+                pool = sum(
+                    1 for pid in ctx.person_ids if _is_available(ctx, pid, di, slot)
+                )
+                if pool < p.count:
+                    blocking.append(BlockingConstraint(
+                        type="understaffed",
+                        where={
+                            "date": str(day),
+                            "slot": f"{slot.start}-{slot.end}",
+                            "position_id": p.position_id,
+                        },
+                        detail=f"必要{p.count}名に対し可用{pool}名",
+                    ))
+                    if len(blocking) >= 10:  # 多すぎると読みにくいので打ち切り
+                        return blocking
+    return blocking

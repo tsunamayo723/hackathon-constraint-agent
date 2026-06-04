@@ -182,7 +182,12 @@
 
 3typeだけ通る最小ソルバー(headcount + availability + separate)。
 
-**ステータス**: 未着手
+**ステータス**: ✅ 完成（2026-06-04）
+- OR-Tools(CP-SAT)導入。`src/solver/`（slots/context/engine）＋ `src/handlers/`（3ハンドラ）
+- `POST /solver/run` で実際のシフトを計算。確定/暫定(provisional)を判定
+- Hard(headcount/availability) / Soft(separate=罰金) を厳守。未対応typeは warnings で明示
+- `tests/test_solver.py` 9ケース緑。詳細は `docs/spec/06_solver.md`
+- 残課題: 残り13タイプのハンドラ、policy_mode の目的関数反映、min_rest/break 等
 
 ---
 

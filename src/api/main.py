@@ -18,6 +18,7 @@ from src.models import (
 from src.api.routes_parser import router as parser_router
 from src.api.routes_admin import router as admin_router
 from src.api.routes_setup import router as setup_router
+from src.api.routes_solver import router as solver_router
 
 
 tags_metadata = [
@@ -52,8 +53,9 @@ tags_metadata = [
     {
         "name": "ソルバー",
         "description": (
-            "OR-Tools（最適化エンジン）へのデータ受け渡し。\n\n"
-            "現在は入力データの形式チェックのみ。シフト計算実行は `/solver/run`（実装予定）で行います。"
+            "OR-Tools（最適化エンジン）でシフトを計算します。\n\n"
+            "- `/solver/run` … 実際のシフト計算（最小ソルバー: headcount/availability/separate 対応）\n"
+            "- `/solver/validate-input` … 入力データの形式チェックのみ"
         ),
     },
     {
@@ -103,6 +105,7 @@ app = FastAPI(
 
 app.include_router(setup_router)
 app.include_router(parser_router)
+app.include_router(solver_router)
 app.include_router(admin_router)
 
 

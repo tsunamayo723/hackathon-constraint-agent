@@ -16,7 +16,11 @@ import streamlit as st
 
 API_URL = "http://localhost:8001"
 
-st.set_page_config(page_title="セットアップ", page_icon="⚙️", layout="centered")
+# app.py（マルチページ入口）から読み込まれた場合は既に設定済みなので無視する
+try:
+    st.set_page_config(page_title="セットアップ", page_icon="⚙️", layout="centered")
+except Exception:
+    pass
 
 st.title("⚙️ セットアップ")
 st.markdown(

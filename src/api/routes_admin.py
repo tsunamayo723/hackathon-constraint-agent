@@ -14,6 +14,7 @@ from fastapi import APIRouter, HTTPException, Query
 
 from src import llm
 from src.agents import HandlerAgent
+from src.handlers import register_dynamic_handler
 from src.models import PendingTypeRequest
 from src.models.admin_queue import TestResult
 from src.sandbox import run_handler_test
@@ -119,12 +120,13 @@ def generate_handler(req_id: str):
 
 @router.post(
     "/pending-types/{req_id}/approve",
-    summary="承認: 新タイプを登録し、影響シフトを再計算キューへ",
+    summary="承認: 生成ハンドラをソルバーに登録し、影響シフトを再計算キューへ",
     description=(
         "未知タイプを承認します。承認後は:\n\n"
-        "1. 新typeをハンドラ辞書に永続登録（実装予定）\n"
+        "1. 生成済みハンドラコードを**動的ハンドラとして登録**（以降ソルバーが使える）\n"
         "2. `affected_shift_ids` に登録されているシフトを再計算キューに入れる\n"
-        "3. ユーザーに「保留中だった要望が反映されました」と通知（実装予定）"
+        "3. ユーザーに「保留中だった要望が反映されました」と通知（実装予定）\n\n"
+        "※ 生成（/generate）が未実施だと登録するコードが無いため、登録はスキップされます。"
     ),
 )
 def approve_pending(req_id: str, reviewer_id: str = "admin", comment: str = ""):
@@ -136,6 +138,19 @@ def approve_pending(req_id: str, reviewer_id: str = "admin", comment: str = ""):
             status_code=400,
             detail=f"このリクエストは既に処理済みです（現在: {req.status}）",
         )
+
+    # 承認＝生成ハンドラをソルバーに登録（以降このtypeが使えるようになる）
+    registered = False
+    if req.suggested_handler_code:
+        try:
+            register_dynamic_handler(req.suggested_type_name, req.suggested_handler_code)
+            registered = True
+        except Exception as exc:
+            logger.exception("ハンドラ登録に失敗")
+            raise HTTPException(
+                status_code=500,
+                detail=f"承認しましたがハンドラ登録に失敗しました: {exc}",
+            )
 
     req.status = "approved"
     req.reviewed_at = datetime.now()
@@ -153,6 +168,7 @@ def approve_pending(req_id: str, reviewer_id: str = "admin", comment: str = ""):
     return {
         "結果": "承認しました",
         "タイプ名": req.suggested_type_name,
+        "ハンドラ登録": "完了（ソルバーで使えます）" if registered else "スキップ（生成コードが無い）",
         "再計算キューに入れたシフト数": len(req.affected_shift_ids),
     }
 

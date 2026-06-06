@@ -90,14 +90,31 @@ python -m pytest tests/test_sandbox.py -q
 
 ---
 
-## 5. まだやっていないこと（次フェーズ）
+## 5. 承認後の動的登録（A1b・実装済み）
+
+承認すると、生成ハンドラが**実際にソルバーで使えるようになる**。
+
+| 仕組み | 内容 |
+|---|---|
+| `register_dynamic_handler(type, code)` | 承認時に呼ばれ、生成コードを exec して動的ハンドラ辞書に登録 |
+| `get_handler` | 「組み込み→動的」の順で探す。承認済みtypeはここで見つかる |
+| `SolverInput.dynamic_constraints` | 新type用の入り口（`{type, params}`の配列）。既知16typeのunion外なので別チャネル |
+| engine | dynamic_constraints を動的ハンドラで適用。未登録typeは `warnings` に `unregistered:<type>` |
+
+```
+承認 → register_dynamic_handler() → 以降 /solver/run に
+   dynamic_constraints=[{"type":"recurring_day_off","params":{...}}] を渡すと適用される
+```
+
+- **安全境界**: 承認されたコードは本番プロセスで exec される。**人の承認がゲート**。
+- 登録は当面インメモリ（再起動で消える。永続化はSupabase段階）。
+- テスト: `tests/test_dynamic_handler.py`（登録後に適用される／未登録は警告）。
+
+### まだやっていないこと（次フェーズ）
 
 | 残り | 内容 |
 |---|---|
-| **A2 管理者承認画面** | このキュー（要約・確認点・生成コード・テスト結果）を画面で見て承認/却下 |
-| **A1b 動的登録＋再計算** | 承認後、生成ハンドラを `HANDLERS` 辞書に登録し、本番ソルバーで使えるようにする＋影響シフト再計算 |
-
-現状は「生成してテストして、承認の材料を揃える」まで。承認後に**実際に使う**部分は次に作る。
+| **A1c 自動再計算＋通知** | 承認後、影響シフトに dynamic_constraint を自動付与して再計算し、暫定→確定に更新・ユーザー通知 |
 
 ---
 

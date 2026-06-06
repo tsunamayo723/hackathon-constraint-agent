@@ -22,6 +22,10 @@ class SolverInput(BaseModel):
     masters: Masters
     constraints: list[Constraint]
 
+    # AIが生成・承認した「動的タイプ」の制約。既知16typeのunion外なので別チャネルで受ける。
+    # 各要素は {"type": <新type名>, "params": {...}}。登録済みハンドラがあれば適用される。
+    dynamic_constraints: list[dict] = []
+
 
 # ── 出力: 割当レコード ────────────────────────────────────────────
 

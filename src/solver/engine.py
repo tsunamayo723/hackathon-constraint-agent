@@ -64,6 +64,16 @@ def solve(
             continue
         handler(c.params, ctx)
 
+    # 動的タイプ（AIが生成・承認した新type）。登録済みハンドラがあれば適用。
+    for dc in spec.dynamic_constraints:
+        dtype = dc.get("type", "")
+        handler = get_handler(dtype)
+        if handler is None:
+            # 未承認/未登録の新type → 黙って捨てず警告で明示
+            warnings.append(SolverWarning(type=f"unregistered:{dtype}"))
+            continue
+        handler(dc.get("params", {}), ctx)
+
     # availability は全件出そろってから適用（枠外コマを0に固定）
     _apply_availability(ctx)
 

@@ -103,6 +103,20 @@ AIが生成した未知タイプのハンドラを `HANDLERS` 辞書に追記・
 
 ---
 
+## 不変条件チェック（SolverOutput.validation）
+
+「良いシフト＝**不変条件ゼロ違反** ＋ スコア高」。最適化（スコア）とは別レイヤーで、
+**守られるべき不変条件**をソルバー出力から**独立に再検算**する（`src/solver/validator.py`）。
+
+- **availability は Hard・厳格**: 希望を1件も出していない人は**出勤不可**（present=0全コマ）。
+  足りなければ穴は穴として出す（headcountはSoft）。＝「入れない人を入れる」を原理的に起こさない。
+- バリデータの違反（0が正常・あればバグ）: `out_of_availability` / `double_booking` /
+  `out_of_hours` / `invalid_id`。
+- 要注意（運用警告）: 希望未提出スタッフ一覧（配置対象外＝希望を集めきれていない）。
+- 出力 `SolverOutput.validation`（valid / violation_count / violations / warnings）。④画面に表示。
+
+---
+
 ## 評価指標（SolverOutput.evaluation）
 
 完成シフトを多角的に評価する（solved時）。`engine._evaluate()` が集計。

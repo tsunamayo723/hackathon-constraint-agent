@@ -28,6 +28,20 @@ def handle(params, ctx):
 
 
 def _spec(dynamic_constraints):
+    from datetime import date, timedelta
+    # 希望未提出＝出勤不可になったので p1/p2 に全日フル可用を付与
+    cons = [{
+        "type": "headcount_requirement",
+        "params": {"slot_label": "L", "time_start": "11:00", "time_end": "14:00",
+                   "position_id": "pos_hall", "count": 1},
+    }]
+    d = date(2026, 11, 2)
+    while d <= date(2026, 11, 8):
+        for pid in ("p1", "p2"):
+            cons.append({"type": "availability", "params": {
+                "person_id": pid, "date": d.isoformat(), "start": "00:00", "end": "23:59"}})
+        d += timedelta(days=1)
+
     return SolverInput.model_validate({
         "frame": {
             "period": {"start": "2026-11-02", "end": "2026-11-08"},  # 月〜日（水を含む）
@@ -39,11 +53,7 @@ def _spec(dynamic_constraints):
             "positions": [{"id": "pos_hall", "name": "ホール"}],
             "roles": [], "skills": [],
         },
-        "constraints": [{
-            "type": "headcount_requirement",
-            "params": {"slot_label": "L", "time_start": "11:00", "time_end": "14:00",
-                       "position_id": "pos_hall", "count": 1},
-        }],
+        "constraints": cons,
         "dynamic_constraints": dynamic_constraints,
     })
 

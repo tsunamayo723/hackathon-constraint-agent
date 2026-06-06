@@ -138,6 +138,18 @@ if st.button("🧮 シフトを計算する", type="primary"):
         sc3.metric("希望違反（罰金）", meta.get("soft_penalty", "?"), help="ソフト制約の違反度。0が理想（スケールは曖昧なので参考値）")
         st.caption(f"計算時間 {meta.get('elapsed_ms','?')}ms / 目的関数 {meta.get('objective','?')}（参考・小さいほど良い）")
 
+        # ── 🛡️ 不変条件チェック（バリデータ・スコアとセットで） ──────
+        val = out.get("validation")
+        if val:
+            if val["valid"]:
+                st.success("🛡️ 不変条件チェック：✅ 違反 0件（“入れない人を入れる”等の致命的ミスなし）")
+            else:
+                st.error(f"🛡️ 不変条件チェック：❌ 違反 {val['violation_count']} 件（要修正）")
+                for v in val["violations"][:10]:
+                    st.markdown(f"- `{v['type']}` {v.get('person_id','')} {v.get('date') or ''}：{v['detail']}")
+            for w in val.get("warnings", []):
+                st.caption(f"⚠️ {w}")
+
         # ── 必要人数（ブロック別の需要）＋ 充足状況 ───────────────
         if demands:
             st.markdown("**必要人数（方針）：**")

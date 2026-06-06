@@ -57,6 +57,10 @@ _run_examples = {
                         "count": 1,
                     },
                 },
+                # 希望未提出＝出勤不可なので、p1 の出勤希望を入れておく（無いと空シフトになる）
+                {"type": "availability", "params": {"person_id": "p1", "date": "2026-11-01", "start": "11:00", "end": "14:00"}},
+                {"type": "availability", "params": {"person_id": "p1", "date": "2026-11-02", "start": "11:00", "end": "14:00"}},
+                {"type": "availability", "params": {"person_id": "p1", "date": "2026-11-03", "start": "11:00", "end": "14:00"}},
             ],
         },
     },

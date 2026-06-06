@@ -27,6 +27,7 @@ from src.models.solver_io import (
 )
 from .context import SolverContext
 from .slots import Slot, build_day_slots, date_range
+from .validator import validate
 
 # 求解の打ち切り時間（秒）。デモ規模なら十分。
 TIME_LIMIT_SEC = 10.0
@@ -112,7 +113,7 @@ def solve(
             else round((required_units - shortage_units) / required_units * 100, 1)
         )
 
-        return SolverOutput(
+        output = SolverOutput(
             status="solved",
             shift_status=shift_status,
             meta=SolverMeta(
@@ -131,6 +132,9 @@ def solve(
             pending_constraints=pending,
             evaluation=_evaluate(ctx, solver, coverage_score),
         )
+        # 出力を生データから独立に再検算（不変条件チェック）
+        output.validation = validate(spec, output)
+        return output
 
     if result == cp_model.INFEASIBLE:
         return SolverOutput(
@@ -186,20 +190,18 @@ def _build_variables(ctx: SolverContext) -> None:
 
 def _apply_availability(ctx: SolverContext) -> None:
     """
-    出勤希望ベースの固定。
+    出勤希望ベースの固定（厳格）。
 
-    availability に1件でも登録のある人は「出した枠の中だけ」入れる:
-      - 希望を出した日: その枠外のコマは present=0
-      - 希望を出していない日: その日は終日 present=0
-    availability が1件も無い人は無制限（小さなサンプルでも動くように）。
+    「出した枠の中だけ」入れる。**希望を1件も出していない人は出勤不可**として扱い、
+    全コマ present=0 に固定する（＝『入れない人を入れる』を原理的に起こさない）。
+    足りなければ穴は穴として正直に出す（headcountはSoftなので不足が計上される）。
     """
-    for pid, day_windows in ctx.availability.items():
+    for pid in ctx.person_ids:
+        day_windows = ctx.availability.get(pid)  # 未提出の人は None
         for di in range(len(ctx.days)):
-            windows = day_windows.get(di)
+            windows = day_windows.get(di) if day_windows else None
             for slot in ctx.slots:
-                allowed = False
-                if windows:
-                    allowed = any(slot.is_within(s, e) for (s, e) in windows)
+                allowed = bool(windows) and any(slot.is_within(s, e) for (s, e) in windows)
                 if not allowed:
                     ctx.model.Add(ctx.present[(pid, di, slot.index)] == 0)
 
@@ -330,10 +332,10 @@ def _understaffed_warnings(ctx: SolverContext, solver: cp_model.CpSolver) -> lis
 
 
 def _is_available(ctx: SolverContext, pid: str, di: int, slot: Slot) -> bool:
-    """診断用: その人がそのコマに入れる可能性があるか（availability考慮）。"""
+    """診断用: その人がそのコマに入れる可能性があるか（厳格: 未提出は不可）。"""
     day_windows = ctx.availability.get(pid)
     if day_windows is None:
-        return True  # 無制限の人
+        return False  # 希望未提出＝出勤不可
     windows = day_windows.get(di)
     if not windows:
         return False

@@ -12,7 +12,8 @@
 from src.models.parser_io import UntranslatedConstraint
 from src.models.solver_io import SolverInput
 from src.solver.engine import solve
-from src.solver.slots import build_day_slots, hhmm_to_min, min_to_hhmm
+from src.solver.slots import build_day_slots, date_range, hhmm_to_min, min_to_hhmm
+from datetime import date as _date
 
 
 def _base_masters():
@@ -28,7 +29,15 @@ def _base_masters():
 
 
 def _spec(constraints, start="2026-11-01", end="2026-11-01",
-          open_="11:00", close="12:00", slot=60):
+          open_="11:00", close="12:00", slot=60, with_availability=True):
+    cons = list(constraints)
+    # 希望未提出＝出勤不可になったので、既定で p1/p2 に全日フル可用を付与しておく
+    # （availability そのものを検証するテストは with_availability=False で自前指定する）
+    if with_availability:
+        for d in date_range(_date.fromisoformat(start), _date.fromisoformat(end)):
+            for pid in ("p1", "p2"):
+                cons.append({"type": "availability", "params": {
+                    "person_id": pid, "date": d.isoformat(), "start": "00:00", "end": "23:59"}})
     return SolverInput.model_validate({
         "frame": {
             "period": {"start": start, "end": end},
@@ -36,7 +45,7 @@ def _spec(constraints, start="2026-11-01", end="2026-11-01",
             "policy_mode": "balance",
         },
         "masters": _base_masters(),
-        "constraints": constraints,
+        "constraints": cons,
     })
 
 
@@ -100,7 +109,7 @@ def test_headcount_shortage_is_best_effort_not_infeasible():
 
 
 def test_availability_restricts_to_offered_day():
-    # 2日間・各日1名必要。p2は1日目だけ可用、p1は無制限。
+    # 2日間・各日1名必要。p1は両日可用、p2は1日目だけ可用。
     # → p2は2日目に入れない（枠外固定）
     out = solve(_spec(
         [
@@ -108,9 +117,13 @@ def test_availability_restricts_to_offered_day():
              "params": {"slot_label": "L", "time_start": "11:00", "time_end": "12:00",
                         "position_id": "pos_hall", "count": 1}},
             {"type": "availability",
+             "params": {"person_id": "p1", "date": "2026-11-01", "start": "11:00", "end": "12:00"}},
+            {"type": "availability",
+             "params": {"person_id": "p1", "date": "2026-11-02", "start": "11:00", "end": "12:00"}},
+            {"type": "availability",
              "params": {"person_id": "p2", "date": "2026-11-01", "start": "11:00", "end": "12:00"}},
         ],
-        start="2026-11-01", end="2026-11-02",
+        start="2026-11-01", end="2026-11-02", with_availability=False,
     ))
     assert out.status == "solved"
     # p2 が2日目(11-02)に割り当てられていないこと

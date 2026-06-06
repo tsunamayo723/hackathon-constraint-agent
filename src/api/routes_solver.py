@@ -21,6 +21,7 @@ from src.storage import (
     get_frame,
     get_masters,
     get_policy_constraints,
+    list_pending_requests,
 )
 
 router = APIRouter(prefix="/solver", tags=["ソルバー"])
@@ -153,4 +154,14 @@ def run_solver_stored() -> SolverOutput:
     except ValidationError as e:
         raise HTTPException(status_code=422, detail=e.errors())
 
-    return solve(spec)
+    # 未承認の未知タイプが残っていれば「暫定シフト」にする（承認後に再作成で確定）
+    pending = [
+        UntranslatedConstraint(
+            source_text=p.source_texts[0] if p.source_texts else "",
+            suggested_type_name=p.suggested_type_name,
+            reason=p.summary or "管理者の承認待ち（暫定シフトに未反映）",
+        )
+        for p in list_pending_requests(status="pending")
+    ]
+
+    return solve(spec, pending)

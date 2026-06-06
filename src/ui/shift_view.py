@@ -48,6 +48,25 @@ if m.status_code != 200 or f.status_code != 200:
     st.warning("先に「① セットアップ」でマスタと営業情報を登録してください。")
     st.stop()
 
+# 計算に使う制約の内訳（蓄積の可視化）
+s = _safe_get("/setup/summary")
+if s is not None and s.status_code == 200:
+    summary = s.json()
+    st.caption(
+        f"📋 計算に使う制約：方針 {summary['方針の制約数']}件 "
+        f"{summary['方針の内訳']} ／ 出勤希望 {summary['出勤希望(availability)件数']}件"
+        f"　|　対象期間 {summary['対象期間']}"
+    )
+    st.caption(
+        "⚠️ 出勤希望CSVの日付が**対象期間内**にあるか確認してください"
+        "（期間外の希望は無視され、人数不足になります）。"
+    )
+    if st.button("🗑️ 方針・出勤希望をリセット（やり直し）"):
+        r = requests.post(f"{API_URL}/setup/reset-constraints", timeout=20)
+        if r.status_code == 200:
+            st.success("リセットしました。②③から入れ直してください。")
+            st.rerun()
+
 st.divider()
 
 
@@ -107,10 +126,20 @@ if st.button("🧮 シフトを計算する", type="primary"):
         st.caption(f"計算時間 {meta.get('elapsed_ms','?')}ms / 目的関数値 {meta.get('objective','?')}（出勤者のみ表示）")
         render_shift_table(out["assignments"], masters)
     elif out["status"] == "infeasible":
-        st.error("条件を満たすシフトが作れませんでした（人数不足の可能性）。")
-        for b in out.get("blocking_constraints", []):
-            w = b.get("where", {})
-            st.markdown(f"- {w.get('date','')} {w.get('slot','')} ／ {w.get('position_id','')}：{b.get('detail','')}")
+        st.error("条件を満たすシフトが作れませんでした。")
+        blocking = out.get("blocking_constraints", [])
+        if blocking:
+            st.markdown("**詰まり箇所（人数不足）：**")
+            for b in blocking:
+                w = b.get("where", {})
+                st.markdown(f"- {w.get('date','')} {w.get('slot','')} ／ {w.get('position_id','')}：{b.get('detail','')}")
+        else:
+            st.info(
+                "詰まり箇所を特定できませんでした。よくある原因：  \n"
+                "- 出勤希望の**日付が対象期間外**（11月のデータに対し期間が別月など）  \n"
+                "- ②の方針が**蓄積して矛盾**している → 上の「🗑️ リセット」で入れ直す  \n"
+                "- 必要人数に対して出勤可能者が少ない"
+            )
     else:
         st.warning("計算が時間内に終わりませんでした。条件を見直してください。")
 

@@ -8,7 +8,7 @@
 Streamlit と FastAPI は別プロセスなので、必ずAPI経由で保存する。
 """
 
-import io
+from datetime import date, time
 
 import pandas as pd
 import requests
@@ -154,21 +154,22 @@ st.header("② 営業情報")
 st.caption("対象月・営業時間・シフト作成のポリシーを設定します。")
 
 with st.form("frame_form"):
+    st.caption("初期値はデモ用サンプル（2026年11月）に合わせてあります。")
     st.subheader("対象期間")
     c1, c2 = st.columns(2)
     with c1:
-        start_date = st.date_input("開始日")
+        start_date = st.date_input("開始日", value=date(2026, 11, 1))
     with c2:
-        end_date = st.date_input("終了日")
+        end_date = st.date_input("終了日", value=date(2026, 11, 7))
 
     st.subheader("営業時間")
     c3, c4, c5 = st.columns(3)
     with c3:
-        open_time = st.time_input("開店")
+        open_time = st.time_input("開店", value=time(11, 0))
     with c4:
-        close_time = st.time_input("閉店")
+        close_time = st.time_input("閉店", value=time(22, 0))
     with c5:
-        slot_minutes = st.selectbox("スロット単位", [30, 60], index=0)
+        slot_minutes = st.selectbox("スロット単位", [30, 60], index=1)
 
     st.subheader("シフト作成ポリシー")
     policy_label = st.radio(

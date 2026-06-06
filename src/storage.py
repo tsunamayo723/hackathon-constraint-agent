@@ -109,3 +109,8 @@ def save_availability(items: list[dict]) -> None:
 
 def get_availability() -> list[dict]:
     return list(_availability)
+
+
+def clear_availability() -> None:
+    global _availability
+    _availability = []

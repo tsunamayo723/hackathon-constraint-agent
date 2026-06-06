@@ -15,9 +15,12 @@ from pydantic import ValidationError
 from src.models import Frame, Masters
 from src.models.constraints import AvailabilityParams
 from src.storage import (
+    clear_availability,
+    clear_policy_constraints,
     get_availability,
     get_frame,
     get_masters,
+    get_policy_constraints,
     save_availability,
     save_frame,
     save_masters,
@@ -160,3 +163,39 @@ def post_desired_shifts(records: list[dict]):
 def fetch_desired_shifts():
     items = get_availability()
     return {"件数": len(items), "items": items}
+
+
+@router.get(
+    "/summary",
+    summary="シフト計算に使う保存内容の要約",
+    description="マスタ・営業情報・②の方針・③の出勤希望の登録状況をまとめて返す（⑤の確認用）。",
+)
+def setup_summary():
+    masters = get_masters()
+    frame = get_frame()
+    policy = get_policy_constraints()
+    avail = get_availability()
+    # 方針制約をtypeごとに数える
+    type_counts: dict[str, int] = {}
+    for c in policy:
+        type_counts[c["type"]] = type_counts.get(c["type"], 0) + 1
+    return {
+        "マスタ登録": masters is not None,
+        "スタッフ数": len(masters.persons) if masters else 0,
+        "営業情報登録": frame is not None,
+        "対象期間": f"{frame.period.start} 〜 {frame.period.end}" if frame else None,
+        "方針の制約数": len(policy),
+        "方針の内訳": type_counts,
+        "出勤希望(availability)件数": len(avail),
+    }
+
+
+@router.post(
+    "/reset-constraints",
+    summary="②の方針と③の出勤希望をクリア（やり直し）",
+    description="蓄積された方針制約と出勤希望を消去します。マスタ・営業情報は残ります。",
+)
+def reset_constraints():
+    clear_policy_constraints()
+    clear_availability()
+    return {"結果": "方針と出勤希望をクリアしました"}

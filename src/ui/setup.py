@@ -235,7 +235,8 @@ st.header("③ 必要人数")
 st.caption(
     "時間帯×ポジションごとに、何人必要かを登録します（シフトの「需要」）。"
     "ここが無いとソルバーに条件が無く、シフトが空になります。  \n"
-    "`position_id` はマスタのポジションID（例: pos_hall / pos_kitchen / pos_register）。"
+    "**CSVアップロード**（`headcounts.csv`）または下の表で直接編集できます。"
+    "サンプル：`data/sample/pattern_*/headcounts.csv`。"
 )
 
 _default_headcounts = pd.DataFrame([
@@ -245,8 +246,14 @@ _default_headcounts = pd.DataFrame([
     {"slot_label": "ディナー", "time_start": "18:00", "time_end": "22:00", "position_id": "pos_kitchen", "count": 2},
 ])
 
+hc_file = st.file_uploader("必要人数CSV（headcounts.csv）をアップロード（任意）", type="csv", key="hc_csv")
+if hc_file is not None:
+    base_headcounts = pd.read_csv(hc_file, dtype=str).fillna("")
+else:
+    base_headcounts = _default_headcounts
+
 hc_edited = st.data_editor(
-    _default_headcounts,
+    base_headcounts,
     num_rows="dynamic",
     use_container_width=True,
     hide_index=True,

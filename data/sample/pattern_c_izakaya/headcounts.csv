@@ -1,0 +1,9 @@
+slot_label,time_start,time_end,position_id,count
+ランチ,11:00,14:00,pos_hall,3
+ディナー,18:00,22:00,pos_hall,6
+ランチ,11:00,14:00,pos_kitchen,2
+ディナー,18:00,22:00,pos_kitchen,4
+ランチ,11:00,14:00,pos_drink,1
+ディナー,18:00,22:00,pos_drink,2
+ランチ,11:00,14:00,pos_cashier,1
+ディナー,18:00,22:00,pos_cashier,2

@@ -100,6 +100,15 @@ def solve(
         shortage_penalty = sum(w * solver.Value(z) for (w, z) in ctx.shortages)
         assignment_units = sum(solver.Value(x) for x in ctx.x.values())
         warnings += _understaffed_warnings(ctx, solver)
+
+        # 充足率ベースの100点満点スコア
+        required_units = sum(info["required"] for _, info in ctx.shortage_info)
+        shortage_units = sum(solver.Value(var) for var, _ in ctx.shortage_info)
+        coverage_score = (
+            100.0 if required_units == 0
+            else round((required_units - shortage_units) / required_units * 100, 1)
+        )
+
         return SolverOutput(
             status="solved",
             shift_status=shift_status,
@@ -110,6 +119,9 @@ def solve(
                 soft_penalty=int(soft_penalty),
                 shortage_penalty=int(shortage_penalty),
                 assignment_units=int(assignment_units),
+                required_units=int(required_units),
+                shortage_units=int(shortage_units),
+                coverage_score=coverage_score,
             ),
             assignments=assignments,
             warnings=warnings,

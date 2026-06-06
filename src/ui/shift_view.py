@@ -125,13 +125,18 @@ if st.button("🧮 シフトを計算する", type="primary"):
         else:
             st.success("✅ **確定版**シフト（すべての要望を反映）")
 
-        # ── スコア（減点方式：小さいほど良い） ──────────────────
+        # ── 充足スコア（100点満点・分かりやすい評価） ────────────
         meta = out.get("meta") or {}
+        score = meta.get("coverage_score", 100.0)
+        st.metric(
+            "🎯 充足スコア（100点満点）", f"{score} 点",
+            help="必要人数をどれだけ満たせたか＝(必要−不足)/必要×100。100点＝全ブロック充足。",
+        )
         sc1, sc2, sc3 = st.columns(3)
-        sc1.metric("スコア（目的関数）", meta.get("objective", "?"), help="小さいほど良い＝ソフト罰金＋割当コマ数")
-        sc2.metric("ソフト罰金", meta.get("soft_penalty", "?"), help="希望（separate等）が破られた度合い。0が理想")
-        sc3.metric("割当コマ数", meta.get("assignment_units", "?"), help="総労働コマ数（必要人数を満たす最小化）")
-        st.caption(f"計算時間 {meta.get('elapsed_ms','?')}ms")
+        sc1.metric("必要人数（計）", meta.get("required_units", "?"), help="必要だった人数の合計（コマ単位）")
+        sc2.metric("不足（計）", meta.get("shortage_units", "?"), help="満たせなかった人数（コマ単位）")
+        sc3.metric("希望違反（罰金）", meta.get("soft_penalty", "?"), help="ソフト制約の違反度。0が理想（スケールは曖昧なので参考値）")
+        st.caption(f"計算時間 {meta.get('elapsed_ms','?')}ms / 目的関数 {meta.get('objective','?')}（参考・小さいほど良い）")
 
         # ── 必要人数（ブロック別の需要）＋ 充足状況 ───────────────
         if demands:
@@ -181,7 +186,16 @@ if st.button("🧮 シフトを計算する", type="primary"):
     else:
         st.warning("計算が時間内に終わりませんでした。条件を見直してください。")
 
-    # ソルバー未対応タイプの警告（正直に表示）
-    unhandled = [w["type"] for w in out.get("warnings", []) if w.get("type", "").startswith(("unhandled:", "unregistered:"))]
+    # 計算に未反映のタイプを「理由つき」で表示（正直に）
+    warns = out.get("warnings", [])
+    unhandled = [w["type"].split(":", 1)[1] for w in warns if w.get("type", "").startswith("unhandled:")]
+    unregistered = [w["type"].split(":", 1)[1] for w in warns if w.get("type", "").startswith("unregistered:")]
     if unhandled:
-        st.caption(f"※ 計算に未反映のタイプ: {', '.join(unhandled)}")
+        st.caption(
+            f"※ 未反映（既知タイプだがソルバーのハンドラが未実装）: {', '.join(set(unhandled))}"
+        )
+    if unregistered:
+        st.caption(
+            f"※ 未反映（未承認の新タイプ）: {', '.join(set(unregistered))} "
+            "→「⑤ 管理者承認」で承認すると次回計算から反映されます。"
+        )

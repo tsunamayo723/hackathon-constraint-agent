@@ -179,6 +179,16 @@ def setup_summary():
     type_counts: dict[str, int] = {}
     for c in policy:
         type_counts[c["type"]] = type_counts.get(c["type"], 0) + 1
+    # 必要人数（headcount）の一覧（⑤の需要サマリ用）
+    demands = [
+        {
+            "slot_label": c["params"].get("slot_label"),
+            "time": f"{c['params'].get('time_start')}〜{c['params'].get('time_end')}",
+            "position_id": c["params"].get("position_id"),
+            "count": c["params"].get("count"),
+        }
+        for c in policy if c["type"] == "headcount_requirement"
+    ]
     return {
         "マスタ登録": masters is not None,
         "スタッフ数": len(masters.persons) if masters else 0,
@@ -186,6 +196,7 @@ def setup_summary():
         "対象期間": f"{frame.period.start} 〜 {frame.period.end}" if frame else None,
         "方針の制約数": len(policy),
         "方針の内訳": type_counts,
+        "必要人数": demands,
         "出勤希望(availability)件数": len(avail),
     }
 

@@ -49,9 +49,11 @@ if m.status_code != 200 or f.status_code != 200:
     st.stop()
 
 # 計算に使う制約の内訳（蓄積の可視化）
+demands: list[dict] = []
 s = _safe_get("/setup/summary")
 if s is not None and s.status_code == 200:
     summary = s.json()
+    demands = summary.get("必要人数", [])
     st.caption(
         f"📋 計算に使う制約：方針 {summary['方針の制約数']}件 "
         f"{summary['方針の内訳']} ／ 出勤希望 {summary['出勤希望(availability)件数']}件"
@@ -119,12 +121,48 @@ if st.button("🧮 シフトを計算する", type="primary"):
 
     if out["status"] == "solved":
         if out["shift_status"] == "provisional":
-            st.info("⚠️ 暫定版（未翻訳の要望が残っています）")
+            st.info("⚠️ **暫定版**シフト（未反映の要望が残っています。承認後に再計算で確定）")
         else:
-            st.success("✅ 確定版シフト")
+            st.success("✅ **確定版**シフト（すべての要望を反映）")
+
+        # ── スコア（減点方式：小さいほど良い） ──────────────────
         meta = out.get("meta") or {}
-        st.caption(f"計算時間 {meta.get('elapsed_ms','?')}ms / 目的関数値 {meta.get('objective','?')}（出勤者のみ表示）")
-        render_shift_table(out["assignments"], masters)
+        sc1, sc2, sc3 = st.columns(3)
+        sc1.metric("スコア（目的関数）", meta.get("objective", "?"), help="小さいほど良い＝ソフト罰金＋割当コマ数")
+        sc2.metric("ソフト罰金", meta.get("soft_penalty", "?"), help="希望（separate等）が破られた度合い。0が理想")
+        sc3.metric("割当コマ数", meta.get("assignment_units", "?"), help="総労働コマ数（必要人数を満たす最小化）")
+        st.caption(f"計算時間 {meta.get('elapsed_ms','?')}ms")
+
+        # ── 必要人数（ブロック別の需要）＋ 充足状況 ───────────────
+        if demands:
+            st.markdown("**必要人数（方針）：**")
+            df_d = pd.DataFrame([
+                {"ブロック": x["slot_label"], "時間": x["time"],
+                 "ポジション": x["position_id"], "必要人数": x["count"], "充足": "✅"}
+                for x in demands
+            ])
+            st.dataframe(df_d, use_container_width=True, hide_index=True)
+            st.caption("※ 必要人数はHard制約のため、計算できた（solved）時点で全ブロック充足しています。")
+
+        # ── 結果サマリ（出勤者・ポジション別） ────────────────────
+        assignments = out["assignments"]
+        position_name = {p["id"]: p["name"] for p in masters["positions"]}
+        by_pos: dict[str, int] = {}
+        for a in assignments:
+            by_pos[a["position_id"]] = by_pos.get(a["position_id"], 0) + 1
+        workers = len({a["person_id"] for a in assignments})
+        pos_txt = "／".join(f"{position_name.get(k,k)} {v}枠" for k, v in by_pos.items())
+        st.caption(f"📊 出勤者 {workers}名 ・ 勤務ブロック {len(assignments)}件（{pos_txt}）")
+
+        # ── 未反映の要望（暫定の理由） ────────────────────────────
+        pending = out.get("pending_constraints", [])
+        if pending:
+            st.warning(f"⏳ **未反映の要望 {len(pending)}件**（管理者の承認待ち）")
+            for p in pending:
+                st.markdown(f"- 「{p['source_text']}」→ 推定: `{p.get('suggested_type_name') or '不明'}`")
+
+        st.divider()
+        render_shift_table(assignments, masters)
     elif out["status"] == "infeasible":
         st.error("条件を満たすシフトが作れませんでした。")
         blocking = out.get("blocking_constraints", [])

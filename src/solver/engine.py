@@ -95,6 +95,8 @@ def solve(
 
     if result in (cp_model.OPTIMAL, cp_model.FEASIBLE):
         assignments = _extract_assignments(ctx, solver)
+        soft_penalty = sum(w * solver.Value(z) for (w, z) in ctx.penalties)
+        assignment_units = sum(solver.Value(x) for x in ctx.x.values())
         return SolverOutput(
             status="solved",
             shift_status=shift_status,
@@ -102,6 +104,8 @@ def solve(
                 seed=DEFAULT_SEED,
                 elapsed_ms=elapsed_ms,
                 objective=int(solver.ObjectiveValue()),
+                soft_penalty=int(soft_penalty),
+                assignment_units=int(assignment_units),
             ),
             assignments=assignments,
             warnings=warnings,

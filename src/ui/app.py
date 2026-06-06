@@ -17,7 +17,8 @@ st.set_page_config(page_title="制約管理エージェント", page_icon="🤖"
 pages = [
     st.Page("setup.py", title="① セットアップ", icon="⚙️"),
     st.Page("staff.py", title="② 追加制約・特殊事情", icon="📝"),
-    # 今後ここに ③出勤希望CSV / ④管理者承認 / ⑤シフト確認 を追加していく
+    st.Page("admin.py", title="④ 管理者承認", icon="🛡️"),
+    # 今後ここに ③出勤希望CSV / ⑤シフト確認 を追加していく
 ]
 
 st.navigation(pages).run()

@@ -9,6 +9,7 @@ APIキーは .env の GEMINI_API_KEY から読む。
 キーが無い場合は is_available() が False を返し、呼び出し側はスタブに切り替える。
 """
 
+import logging
 import os
 import time
 from typing import Type, TypeVar
@@ -102,6 +103,7 @@ def generate_structured(
     for attempt in range(_MAX_RETRIES):
         try:
             resp = client.models.generate_content(model=model, contents=prompt, config=config)
+            _record_usage(model, resp)
             # SDK がパース済みインスタンスを返す場合はそれを使う
             if getattr(resp, "parsed", None) is not None:
                 return resp.parsed  # type: ignore[return-value]
@@ -117,6 +119,25 @@ def generate_structured(
 
     # ここには通常到達しないが、保険
     raise last_exc  # type: ignore[misc]
+
+
+def _record_usage(model: str, resp) -> None:
+    """レスポンスの usage_metadata からトークン数を読み、利用量を記録・ログ出力する。"""
+    meta = getattr(resp, "usage_metadata", None)
+    if meta is None:
+        return
+    in_tok = getattr(meta, "prompt_token_count", 0) or 0
+    out_tok = getattr(meta, "candidates_token_count", 0) or 0
+    try:
+        from src import usage
+        rec = usage.record(model, in_tok, out_tok)
+        logging.getLogger("uvicorn.error").info(
+            "Gemini[%s] tokens in=%d out=%d total=%d 概算 ¥%.3f",
+            model, rec["input_tokens"], rec["output_tokens"],
+            rec["total_tokens"], rec["jpy"],
+        )
+    except Exception:
+        pass  # 計測は失敗しても本処理は止めない
 
 
 def list_models() -> list[str]:

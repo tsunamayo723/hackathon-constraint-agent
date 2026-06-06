@@ -31,6 +31,20 @@ logger = logging.getLogger("uvicorn.error")
 
 
 @router.get(
+    "/usage",
+    summary="Gemini利用量・概算料金（セッション内）",
+    description=(
+        "このサーバー起動中に消費したGeminiのトークン数と概算料金を返します。\n\n"
+        "DB不要のインメモリ集計（再起動で消える）。後でSupabaseに貯めれば日次/月次ダッシュボードに拡張できます。\n"
+        "※ 単価は概算（`src/usage.py` の PRICING_USD_PER_1M を公式pricingで更新してください）。"
+    ),
+)
+def get_usage():
+    from src import usage
+    return usage.session_summary()
+
+
+@router.get(
     "/pending-types",
     summary="承認待ちの未知タイプ一覧",
     description="サイト管理者が見る承認キュー。statusで絞り込みできます。",

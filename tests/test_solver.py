@@ -160,6 +160,19 @@ def test_separate_avoided_when_possible():
 # ── 暫定 / 未対応タイプ ───────────────────────────────────────────
 
 
+def test_evaluation_is_populated():
+    # solved 時に評価指標（ポジション別充足・スタッフ別稼働・公平性）が入る
+    out = solve(_spec([{
+        "type": "headcount_requirement",
+        "params": {"slot_label": "L", "time_start": "11:00", "time_end": "12:00",
+                   "position_id": "pos_hall", "count": 1},
+    }]))
+    assert out.evaluation is not None
+    assert out.evaluation.position_coverage  # ポジション別が1件以上
+    assert len(out.evaluation.staff_stats) == 2  # 2名分
+    assert out.evaluation.fair_max >= out.evaluation.fair_min
+
+
 def test_pending_makes_provisional():
     pending = [UntranslatedConstraint(
         source_text="毎週水曜は休み", suggested_type_name="recurring_day_off", reason="AI準備中",

@@ -147,7 +147,7 @@ if st.button("🧮 シフトを計算する", type="primary"):
                 for x in demands
             ])
             st.dataframe(df_d, use_container_width=True, hide_index=True)
-            st.caption("※ 必要人数はHard制約のため、計算できた（solved）時点で全ブロック充足しています。")
+            st.caption("※ 必要人数はソフト（不足は減点）。足りない場合は下の評価指標と不足警告で確認できます。")
 
         # ── 結果サマリ（出勤者・ポジション別） ────────────────────
         assignments = out["assignments"]
@@ -158,6 +158,40 @@ if st.button("🧮 シフトを計算する", type="primary"):
         workers = len({a["person_id"] for a in assignments})
         pos_txt = "／".join(f"{position_name.get(k,k)} {v}枠" for k, v in by_pos.items())
         st.caption(f"📊 出勤者 {workers}名 ・ 勤務ブロック {len(assignments)}件（{pos_txt}）")
+
+        # ── 📈 評価指標（多角的な評価） ──────────────────────────
+        ev = out.get("evaluation")
+        if ev:
+            with st.expander("📈 評価指標（ポジション別充足・公平性・希望消化率）", expanded=True):
+                if ev["position_coverage"]:
+                    st.markdown("**ポジション別 充足率：**")
+                    st.dataframe(pd.DataFrame([
+                        {"ポジション": position_name.get(p["position_id"], p["position_id"]),
+                         "必要": p["required"], "充足": p["filled"], "充足率(%)": p["rate"]}
+                        for p in ev["position_coverage"]
+                    ]), use_container_width=True, hide_index=True)
+
+                f1, f2, f3, f4 = st.columns(4)
+                f1.metric("出勤コマ 最小", ev["fair_min"])
+                f2.metric("出勤コマ 最大", ev["fair_max"])
+                f3.metric("出勤コマ 平均", ev["fair_avg"])
+                f4.metric("希望違反 件数", ev["soft_violations"], help="separate等のソフト制約が破られた件数")
+                st.caption("出勤コマの最小〜最大の開きが小さいほど公平（偏りが少ない）。")
+
+                utils = [s["utilization"] for s in ev["staff_stats"] if s["utilization"] is not None]
+                if utils:
+                    st.caption(
+                        f"出勤希望の消化率（平均）: {round(sum(utils) / len(utils), 1)}%"
+                        "（出した枠のうち実際に勤務に入った割合）"
+                    )
+
+                with st.expander("スタッフ別の詳細", expanded=False):
+                    st.dataframe(pd.DataFrame([
+                        {"スタッフ": s["name"], "出勤コマ": s["assigned_slots"], "出勤日数": s["work_days"],
+                         "希望枠": s["offered_slots"] if s["offered_slots"] is not None else "—",
+                         "消化率(%)": s["utilization"] if s["utilization"] is not None else "—"}
+                        for s in ev["staff_stats"]
+                    ]), use_container_width=True, hide_index=True)
 
         # ── 未反映の要望（暫定の理由） ────────────────────────────
         pending = out.get("pending_constraints", [])

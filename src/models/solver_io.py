@@ -85,6 +85,43 @@ class SolverMeta(BaseModel):
     coverage_score: float = 100.0  # 充足スコア = (required - shortage) / required × 100
 
 
+# ── 評価指標（完成シフトの良し悪しを多角的に見る） ───────────────
+
+
+class PositionCoverage(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    position_id: str
+    required: int       # 必要だった人数（コマ単位）
+    filled: int         # 満たせた人数（コマ単位）
+    rate: float         # 充足率（%）
+
+
+class StaffStat(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    person_id: str
+    name: str
+    assigned_slots: int           # 割り当てられたコマ数（総労働コマ）
+    work_days: int                # 出勤日数
+    offered_slots: Optional[int] = None  # 出勤希望として出した枠のコマ数（無制限の人はNone）
+    utilization: Optional[float] = None  # 希望消化率（assigned/offered ×100）
+
+
+class ShiftEvaluation(BaseModel):
+    """完成シフトの評価指標まとめ。"""
+    model_config = ConfigDict(extra="forbid")
+
+    coverage_score: float                      # 全体の充足率（=meta.coverage_score）
+    position_coverage: list[PositionCoverage] = []
+    staff_stats: list[StaffStat] = []
+    # 公平性（出勤コマ数の散らばり）
+    fair_min: int = 0
+    fair_max: int = 0
+    fair_avg: float = 0.0
+    soft_violations: int = 0                    # ソフト制約（separate等）の違反件数
+
+
 # ── ソルバー出力（3ステータス） ───────────────────────────────────
 
 
@@ -105,6 +142,9 @@ class SolverOutput(BaseModel):
 
     # 未翻訳項目（暫定シフトの場合のみ非空）
     pending_constraints: list[UntranslatedConstraint] = []
+
+    # 完成シフトの評価指標（solved時のみ）
+    evaluation: Optional["ShiftEvaluation"] = None
 
     # 管理者承認後に再計算が必要かのフラグ
     recalculation_needed: bool = False

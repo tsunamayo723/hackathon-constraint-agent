@@ -103,6 +103,24 @@ AIが生成した未知タイプのハンドラを `HANDLERS` 辞書に追記・
 
 ---
 
+## 評価指標（SolverOutput.evaluation）
+
+完成シフトを多角的に評価する（solved時）。`engine._evaluate()` が集計。
+
+| 指標 | 内容 |
+|---|---|
+| 充足スコア | (必要−不足)/必要×100（100点満点） |
+| ポジション別充足率 | position_coverage（required/filled/rate） |
+| スタッフ別 | staff_stats（出勤コマ/出勤日数/希望枠/消化率） |
+| 公平性 | 出勤コマ数の 最小/最大/平均（開きが小さいほど公平） |
+| 希望消化率 | 出した枠のうち実際に入った割合（assigned/offered） |
+| ソフト違反 | separate等のソフト制約が破られた件数 |
+
+> 注: `time_preference`/`desired_workdays` 等の「希望合致率」を厳密に出すには、それらの
+> ソフトハンドラ実装が前提（現状ソルバーは headcount/availability/separate のみ）。
+
+---
+
 ## ファイル
 
 | ファイル | 役割 |

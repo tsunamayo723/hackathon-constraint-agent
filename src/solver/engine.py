@@ -17,10 +17,13 @@ from src.models.parser_io import UntranslatedConstraint
 from src.models.solver_io import (
     Assignment,
     BlockingConstraint,
+    PositionCoverage,
+    ShiftEvaluation,
     SolverInput,
     SolverMeta,
     SolverOutput,
     SolverWarning,
+    StaffStat,
 )
 from .context import SolverContext
 from .slots import Slot, build_day_slots, date_range
@@ -126,6 +129,7 @@ def solve(
             assignments=assignments,
             warnings=warnings,
             pending_constraints=pending,
+            evaluation=_evaluate(ctx, solver, coverage_score),
         )
 
     if result == cp_model.INFEASIBLE:
@@ -240,6 +244,72 @@ def _merge_consecutive(on_slots: list[Slot]) -> list[list[Slot]]:
         else:
             blocks.append([slot])
     return blocks
+
+
+def _evaluate(ctx: SolverContext, solver: cp_model.CpSolver, coverage_score: float) -> ShiftEvaluation:
+    """完成シフトの評価指標（ポジション別充足・スタッフ別稼働・公平性・ソフト違反）を集計する。"""
+    name_of = {p.id: p.name for p in ctx.masters.persons}
+
+    # ① ポジション別の充足率
+    pos_req: dict[str, int] = {}
+    pos_short: dict[str, int] = {}
+    for var, info in ctx.shortage_info:
+        pid = info["position_id"]
+        pos_req[pid] = pos_req.get(pid, 0) + info["required"]
+        pos_short[pid] = pos_short.get(pid, 0) + solver.Value(var)
+    position_coverage = []
+    for pid, req in pos_req.items():
+        filled = req - pos_short.get(pid, 0)
+        position_coverage.append(PositionCoverage(
+            position_id=pid, required=req, filled=filled,
+            rate=round(filled / req * 100, 1) if req else 100.0,
+        ))
+
+    # ② スタッフ別の稼働・出勤希望消化率
+    staff_stats: list[StaffStat] = []
+    assigned_list: list[int] = []
+    for pid in ctx.person_ids:
+        assigned = sum(
+            solver.Value(ctx.present[(pid, di, slot.index)])
+            for di in range(len(ctx.days)) for slot in ctx.slots
+        )
+        work_days = sum(solver.Value(ctx.work_day[(pid, di)]) for di in range(len(ctx.days)))
+
+        # 出した枠（availability）のコマ数。希望を出していない人（無制限）は None。
+        offered = None
+        util = None
+        day_windows = ctx.availability.get(pid)
+        if day_windows is not None:
+            offered = sum(
+                1
+                for di, windows in day_windows.items()
+                for slot in ctx.slots
+                if any(slot.is_within(s, e) for (s, e) in windows)
+            )
+            util = round(assigned / offered * 100, 1) if offered else 0.0
+
+        assigned_list.append(assigned)
+        staff_stats.append(StaffStat(
+            person_id=pid, name=name_of.get(pid, pid),
+            assigned_slots=assigned, work_days=work_days,
+            offered_slots=offered, utilization=util,
+        ))
+
+    # ③ 公平性（出勤コマ数の散らばり）
+    fair_min = min(assigned_list) if assigned_list else 0
+    fair_max = max(assigned_list) if assigned_list else 0
+    fair_avg = round(sum(assigned_list) / len(assigned_list), 1) if assigned_list else 0.0
+
+    # ④ ソフト制約（separate等）の違反件数
+    soft_violations = sum(1 for (_w, z) in ctx.penalties if solver.Value(z) > 0)
+
+    return ShiftEvaluation(
+        coverage_score=coverage_score,
+        position_coverage=position_coverage,
+        staff_stats=staff_stats,
+        fair_min=fair_min, fair_max=fair_max, fair_avg=fair_avg,
+        soft_violations=soft_violations,
+    )
 
 
 def _understaffed_warnings(ctx: SolverContext, solver: cp_model.CpSolver) -> list[SolverWarning]:

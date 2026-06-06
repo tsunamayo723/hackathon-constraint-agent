@@ -16,7 +16,7 @@ st.set_page_config(page_title="制約管理エージェント", page_icon="🤖"
 # st.Page のパスは、この app.py があるディレクトリ（src/ui/）からの相対パス
 pages = [
     st.Page("setup.py", title="① セットアップ", icon="⚙️"),
-    st.Page("staff.py", title="② 追加制約・特殊事情", icon="📝"),
+    st.Page("staff.py", title="② シフト作成の要望", icon="📝"),
     st.Page("admin.py", title="④ 管理者承認", icon="🛡️"),
     # 今後ここに ③出勤希望CSV / ⑤シフト確認 を追加していく
 ]

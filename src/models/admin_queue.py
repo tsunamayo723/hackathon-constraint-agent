@@ -23,6 +23,7 @@ class TestResult(BaseModel):
     total: int                  # テストケース数
     passed_count: int           # 通った数
     failed_cases: list[str] = []  # 失敗したケースの説明
+    detail: str = ""            # テストの説明・メッセージ（何を確認したか）
     elapsed_ms: int = 0
 
 
@@ -43,6 +44,7 @@ class PendingTypeRequest(BaseModel):
     # Gemini Pro が生成した内容
     suggested_schema: Optional[dict] = None       # 新typeのJSONスキーマ
     suggested_handler_code: Optional[str] = None  # ハンドラ関数のPythonコード
+    tested_params: Optional[dict] = None          # テストに使った例params（何で試したか）
     test_results: Optional[TestResult] = None     # サンドボックスでのテスト結果
     confidence: float = Field(default=0.0, ge=0.0, le=1.0)
     concerns: list[str] = []             # AIが自己申告する懸念点

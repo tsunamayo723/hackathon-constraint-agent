@@ -95,20 +95,40 @@ for req in queue:
         with c3:
             st.metric("状態", _STATUS_LABEL.get(req["status"], req["status"]))
 
-        # 確認してほしい点
+        # 確認してほしい点（解釈について・パース時のFlash由来）
         review_points = req.get("review_points") or []
-        concerns = req.get("concerns") or []
-        if review_points or concerns:
-            st.markdown("🔍 **確認してほしい点**")
+        if review_points:
+            st.markdown("🔍 **確認してほしい点（解釈について）**")
             for r in review_points:
                 st.markdown(f"- {r}")
-            for c in concerns:
-                st.markdown(f"- ⚠️ {c}")
 
-        # テスト不合格なら理由を出す
+        # AIからの申し送り（生成コードについての懸念点・自信度と対になる情報）
+        if generated:
+            concerns = req.get("concerns") or []
+            st.markdown("📨 **AIからの申し送り（懸念点）**")
+            if concerns:
+                for c in concerns:
+                    st.markdown(f"- ⚠️ {c}")
+            else:
+                st.caption("特になし（AIは懸念を申告していません）")
+
+        # テスト内容の透明化（「合格」が何を意味するか）
         tr = req.get("test_results")
-        if tr is not None and not tr["passed"] and tr.get("failed_cases"):
-            st.warning("テスト不合格：" + " / ".join(tr["failed_cases"]))
+        if tr is not None:
+            with st.expander("🧪 テスト内容（合格＝簡易動作確認。正しさの保証ではありません）", expanded=not tr["passed"]):
+                st.markdown(f"**結果：{'✅ 合格' if tr['passed'] else '❌ 不合格'}**")
+                if tr.get("detail"):
+                    st.caption(tr["detail"])
+                if req.get("tested_params"):
+                    st.markdown("テストに使った例params：")
+                    st.json(req["tested_params"])
+                if not tr["passed"] and tr.get("failed_cases"):
+                    st.warning("失敗内容：" + " / ".join(tr["failed_cases"]))
+                st.info(
+                    "このテストは「3名×1週間の小シナリオに適用してエラーなく解けるか」を見る"
+                    "**簡易動作確認**です。ルールの意味が正しいか（Hard/Softや対象範囲）は"
+                    "コードと確認ポイントで人が判断してください。"
+                )
 
         # ── 未生成: 生成ボタン ──────────────────────────────────
         if not generated:
@@ -146,6 +166,10 @@ for req in queue:
 
         # ── 承認 / 却下 ────────────────────────────────────────
         if req["status"] == "pending":
+            st.caption(
+                "※ 現状、承認は記録されますが、ハンドラを本番ソルバーへ自動登録して"
+                "シフトに反映する処理は次フェーズ（A1b）です。"
+            )
             comment = st.text_input("コメント（任意）", key=f"cmt_{req_id}", placeholder="承認/却下の理由など")
             b1, b2, _ = st.columns([1, 1, 3])
             with b1:

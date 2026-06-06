@@ -96,11 +96,13 @@ def generate_handler(req_id: str):
         req.suggested_schema = {"raw": gen.param_schema_json}
     req.confidence = max(0.0, min(1.0, gen.confidence))
     req.concerns = gen.concerns
+    req.tested_params = example_params
     req.test_results = TestResult(
         passed=bool(test.get("passed")),
         total=1,
         passed_count=1 if test.get("passed") else 0,
         failed_cases=[] if test.get("passed") else [test.get("message", "テスト失敗")],
+        detail=test.get("message", ""),
     )
     update_pending_request(req)
 

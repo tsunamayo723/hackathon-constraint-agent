@@ -91,7 +91,14 @@ if submitted:
                 },
                 timeout=15,
             )
-            resp.raise_for_status()
+            # エラー時は本文の detail（日本語の理由）を取り出して表示する
+            if resp.status_code != 200:
+                try:
+                    detail = resp.json().get("detail", resp.text)
+                except Exception:
+                    detail = resp.text
+                st.error(f"解析に失敗しました（{resp.status_code}）  \n{detail}")
+                st.stop()
             result = resp.json()
         except requests.exceptions.ConnectionError:
             st.error(

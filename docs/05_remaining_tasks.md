@@ -195,7 +195,12 @@
 
 既知16typeへの分類 + 未知検出(`is_new_type`)。
 
-**ステータス**: 未着手
+**ステータス**: 🚧 実装済み・キーで検証待ち（2026-06-06）
+- `src/agents/`（GeminiAgent基底＋ParserAgent）＋ `src/llm.py`（接続土台）を新設
+- **Flashモデル**で自然言語→JSON。paramsはPython側でPydantic厳密検証、確信度<0.5は未翻訳
+- プロンプトは `src/agents/prompts/parser.txt`（テキスト分離・$変数で穴埋め）
+- キー未設定時はスタブにフォールバック。詳細は `docs/spec/07_gemini_agents.md`
+- 残: ユーザーが `.env` に `GEMINI_API_KEY` を設定して実動作確認。Pro側（ハンドラ生成）は未着手
 
 ---
 

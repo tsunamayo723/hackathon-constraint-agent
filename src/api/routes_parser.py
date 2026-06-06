@@ -5,17 +5,49 @@
 from datetime import datetime
 from uuid import uuid4
 
-from fastapi import APIRouter, Body
+from fastapi import APIRouter, Body, HTTPException
 
+from src import llm
 from src.models import (
     ParserInput,
     ParserOutput,
     PendingTypeRequest,
 )
-from src.parser_stub import parse
+from src.parser_stub import parse as parse_stub
+from src.agents import parse as parse_gemini
 from src.storage import add_pending_request
 
 router = APIRouter(prefix="/parser", tags=["パーサ"])
+
+
+# サーバーログに出す（uvicornのロガーに乗せると同じ場所に表示される）
+import logging
+
+logger = logging.getLogger("uvicorn.error")
+
+
+def _run_parse(input_data: ParserInput) -> ParserOutput:
+    """APIキーがあれば本物のGemini、無ければスタブで解析する。"""
+    if not llm.is_available():
+        return parse_stub(input_data)
+
+    try:
+        return parse_gemini(input_data)
+    except Exception as exc:  # Gemini呼び出し失敗は握りつぶさず、ログ＋分かりやすいメッセージで返す
+        # 完全なトレースバックをサーバーログに出力（原因調査用）
+        logger.exception("Geminiパースに失敗しました")
+        msg = str(exc)
+        if "RESOURCE_EXHAUSTED" in msg or "429" in msg:
+            detail = (
+                "Geminiの利用枠／クレジットが不足しています（429）。"
+                "Google AI Studio で請求・クレジットを確認してください。"
+                "（クレジットが復活するまではキーを外せばスタブで動作します）"
+            )
+        elif "PERMISSION_DENIED" in msg or "API_KEY" in msg or "401" in msg or "403" in msg:
+            detail = "APIキーが無効か権限がありません。.env の GEMINI_API_KEY を確認してください。"
+        else:
+            detail = f"Geminiでの解析に失敗しました: {exc}"
+        raise HTTPException(status_code=502, detail=detail)
 
 
 _parser_examples = {
@@ -53,12 +85,13 @@ _parser_examples = {
         "- **untranslated**: 翻訳できなかった文言（元の自然言語のまま保持）\n\n"
         "未翻訳項目は自動的に**サイト管理者の承認キューに登録**されます。\n"
         "ユーザー画面では「✅ 反映済み」「⏳ 確認中」として両方を表示する設計です。\n\n"
-        "※ 現状はGemini未接続のスタブ実装です（キーワードマッチで判定）"
+        "※ GEMINI_API_KEY を設定すると Gemini Flash で解析します。"
+        "未設定の場合はキーワードマッチのスタブにフォールバックします。"
     ),
 )
 def parse_input(body: dict = Body(openapi_examples=_parser_examples)) -> ParserOutput:
     input_data = ParserInput.model_validate(body)
-    output = parse(input_data)
+    output = _run_parse(input_data)
 
     # 未翻訳項目を管理者キューに登録
     for untrans in output.untranslated:

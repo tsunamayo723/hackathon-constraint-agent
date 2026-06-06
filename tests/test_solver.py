@@ -69,6 +69,20 @@ def test_headcount_is_satisfied():
     assert len(out.assignments) == 1
 
 
+def test_headcount_date_applies_only_that_day():
+    # date 指定の headcount は「その日だけ」効く。
+    # 11/02 だけ pos_hall 5名（在籍2名）→ その日だけ不足が出る。他日は需要なし。
+    out = solve(_spec([{
+        "type": "headcount_requirement",
+        "params": {"slot_label": "L", "time_start": "11:00", "time_end": "12:00",
+                   "position_id": "pos_hall", "count": 5, "date": "2026-11-02"},
+    }], start="2026-11-01", end="2026-11-03"))
+    assert out.status == "solved"
+    # 不足が出るのは 11/02 のみ
+    und_dates = {str(w.affected_date) for w in out.warnings if w.type == "understaffed"}
+    assert und_dates == {"2026-11-02"}
+
+
 def test_headcount_shortage_is_best_effort_not_infeasible():
     # 必要3名に対し在籍2名 → Hardではなく不足を減点。解けない状況でも暫定シフトを出す。
     out = solve(_spec([{

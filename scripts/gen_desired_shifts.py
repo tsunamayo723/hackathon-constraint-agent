@@ -48,18 +48,25 @@ def gen_for_pattern(folder: str, rng: random.Random) -> None:
 
     all_days = [PERIOD_START + timedelta(days=i) for i in range(PERIOD_DAYS)]
 
+    # 出せる時間帯のバリエーション（人によってムラを出して難易度UP）
+    windows = [
+        ("11:00", "22:00"),  # 終日
+        ("11:00", "17:00"),  # 早番
+        ("16:00", "22:00"),  # 遅番
+        ("11:00", "15:00"),  # 昼のみ
+        ("18:00", "22:00"),  # 夜のみ
+    ]
+    # 人ごとの「出しやすさ」: よく出す人/たまにしか出さない人を作る
+    window_weights = [0.40, 0.20, 0.20, 0.10, 0.10]
+
     rows: list[list] = []
     note_count = 0
     for pid in person_ids:
-        offered = rng.sample(all_days, k=min(OFFER_DAYS, len(all_days)))
+        # 出勤希望を出す日数を人ごとにばらつかせる（8〜24日）
+        offer_days = rng.randint(8, min(24, len(all_days)))
+        offered = rng.sample(all_days, k=offer_days)
         for d in sorted(offered):
-            start, end = "11:00", "22:00"
-            # たまに時間帯を変える
-            if rng.random() < 0.15:
-                start, end = "17:00", "22:00"
-            elif rng.random() < 0.15:
-                start, end = "11:00", "15:00"
-            # 備考を多めに付ける
+            start, end = rng.choices(windows, weights=window_weights, k=1)[0]
             note = rng.choice(NOTES) if rng.random() < NOTE_PROB else ""
             if note:
                 note_count += 1

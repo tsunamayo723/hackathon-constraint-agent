@@ -214,6 +214,7 @@ def setup_summary():
     base = get_base_headcounts()
     demands = [
         {
+            "date": c["params"].get("date") or "毎日",
             "slot_label": c["params"].get("slot_label"),
             "time": f"{c['params'].get('time_start')}〜{c['params'].get('time_end')}",
             "position_id": c["params"].get("position_id"),

@@ -239,11 +239,12 @@ st.caption(
     "サンプル：`data/sample/pattern_*/headcounts.csv`。"
 )
 
+# date 列は空＝毎日適用 / 日付（YYYY-MM-DD）を入れるとその日だけ適用（繁忙日の上書きなど）
 _default_headcounts = pd.DataFrame([
-    {"slot_label": "ランチ", "time_start": "11:00", "time_end": "14:00", "position_id": "pos_hall", "count": 3},
-    {"slot_label": "ランチ", "time_start": "11:00", "time_end": "14:00", "position_id": "pos_kitchen", "count": 2},
-    {"slot_label": "ディナー", "time_start": "18:00", "time_end": "22:00", "position_id": "pos_hall", "count": 4},
-    {"slot_label": "ディナー", "time_start": "18:00", "time_end": "22:00", "position_id": "pos_kitchen", "count": 2},
+    {"date": "", "slot_label": "ランチ", "time_start": "11:00", "time_end": "14:00", "position_id": "pos_hall", "count": 3},
+    {"date": "", "slot_label": "ランチ", "time_start": "11:00", "time_end": "14:00", "position_id": "pos_kitchen", "count": 2},
+    {"date": "", "slot_label": "ディナー", "time_start": "18:00", "time_end": "22:00", "position_id": "pos_hall", "count": 4},
+    {"date": "", "slot_label": "ディナー", "time_start": "18:00", "time_end": "22:00", "position_id": "pos_kitchen", "count": 2},
 ])
 
 hc_file = st.file_uploader("必要人数CSV（headcounts.csv）をアップロード（任意）", type="csv", key="hc_csv")
@@ -266,13 +267,17 @@ if st.button("📤 必要人数を登録する", type="primary"):
         if not str(r.get("slot_label", "")).strip():
             continue
         try:
-            records.append({
+            rec = {
                 "slot_label": str(r["slot_label"]).strip(),
                 "time_start": str(r["time_start"]).strip(),
                 "time_end": str(r["time_end"]).strip(),
                 "position_id": str(r["position_id"]).strip(),
                 "count": int(r["count"]),
-            })
+            }
+            # date 列が空でなければ「その日だけ」適用として送る
+            if str(r.get("date", "")).strip():
+                rec["date"] = str(r["date"]).strip()
+            records.append(rec)
         except (ValueError, KeyError):
             st.error("入力に不備があります（人数は整数で）。")
             st.stop()

@@ -142,8 +142,8 @@ if st.button("🧮 シフトを計算する", type="primary"):
         if demands:
             st.markdown("**必要人数（方針）：**")
             df_d = pd.DataFrame([
-                {"ブロック": x["slot_label"], "時間": x["time"],
-                 "ポジション": x["position_id"], "必要人数": x["count"], "充足": "✅"}
+                {"対象日": x.get("date", "毎日"), "ブロック": x["slot_label"], "時間": x["time"],
+                 "ポジション": x["position_id"], "必要人数": x["count"]}
                 for x in demands
             ])
             st.dataframe(df_d, use_container_width=True, hide_index=True)

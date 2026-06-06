@@ -38,6 +38,9 @@ def handle_headcount(params: HeadcountParams, ctx: SolverContext) -> None:
     win_end = hhmm_to_min(params.time_end)
 
     for di, day in enumerate(ctx.days):
+        # 特定日付の指定があれば、その日以外はスキップ（省略時は全日に適用）
+        if params.date is not None and day != params.date:
+            continue
         for slot in ctx.slots:
             if not slot.is_within(win_start, win_end):
                 continue

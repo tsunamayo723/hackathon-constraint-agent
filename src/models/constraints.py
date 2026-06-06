@@ -12,6 +12,9 @@ from typing import Annotated, Literal, Optional, Union
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
+# 「date」という名前のフィールドが型名 date をシャドーするのを避けるための別名
+DateType = date
+
 # ═══════════════════════════════════════════════════════════════════
 #  グローバルフレーム（制約ではなく、ソルバー実行全体の枠）
 # ═══════════════════════════════════════════════════════════════════
@@ -54,6 +57,7 @@ class HeadcountParams(BaseModel):
     time_end: str       # "HH:MM"
     position_id: str
     count: int
+    date: Optional[DateType] = None  # 指定日のみ適用（省略時は対象期間の全日）
 
 
 class RoleRequirementParams(BaseModel):

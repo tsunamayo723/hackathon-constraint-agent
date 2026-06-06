@@ -49,6 +49,12 @@ class UntranslatedConstraint(BaseModel):
     source_text: str                                # 翻訳できなかった元の文言
     suggested_type_name: Optional[str] = None       # AIが推測した新type名候補
     reason: str                                     # ユーザー向け説明文
+
+    # 人が読んで承認判断するための補助（パース時にFlashが付与）
+    summary: Optional[str] = None                   # 一言で何のルールか（日本語）
+    ai_assessment: Optional[str] = None             # AIの見解（なぜ未知か／どう解釈したか）
+    review_points: list[str] = []                   # 管理者に確認してほしい点
+
     status: Literal["pending_review", "approved", "rejected"] = "pending_review"
     pending_request_id: Optional[str] = None        # 管理者キューのレコードID
 

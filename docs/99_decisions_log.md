@@ -101,6 +101,33 @@
 
 ---
 
+## 2026-06-06: 完成版の定義と承認まわりの改修方針
+
+- **完成版の定義（重要）**: シフト生成の入力は「②の全体方針テキスト」だけでなく、
+  **出勤希望CSVの日ごと備考（note）もAIが解釈する**ことを完成条件に含める。
+  - 構造化（start/end）はAI不要でavailabilityに直変換。
+  - note（付いている行だけ）は**バッチでパーサ(Flash)に通す**→追加/修正の制約に展開。
+  - **理由**: 30人×30日でnoteを全解釈してもFlashなら月次1回あたり数円オーダーでコスト問題なし
+    （試算で確認）。懸念は「呼び出し回数（バッチ化で解決）」であってコストではない。
+  - L1（構造化のみ・noteはAI解釈しない）は踏み台であり完成形ではない。
+
+- **承認まわりの出力リッチ化（JSON-first承認）**: UIの前に「データ自体を読んで分かる形」にする。
+  未翻訳項目・承認キューに次を追加:
+  - `summary`（一言で何のルールか）/ `ai_assessment`（AIの見解・なぜ未知と判断したか）
+    / `review_points`（人に確認してほしい点のリスト）
+  - **理由**: 生JSON（Swagger）でもサッと承認判断でき、UIは後でそれを表示するだけにできる。
+    AI側とUI側を切り分けて進める。
+
+- **クラスタリング**: 同じ `suggested_type_name` は1リクエストに集約し `source_texts` に追記、
+  `occurrence_count` を加算。承認はタイプ単位で1回（複雑なembeddingは使わず型名一致で十分）。
+
+- **管理者UI(④ admin.py)**: 上記でデータが読みやすくなった後に実装。JSON表示トグルも付ける。
+
+- **影響範囲**: `docs/spec/04_admin_workflow.md`、`docs/spec/03_parser_io.md`、
+  `docs/04_input_flow.md`、`docs/05_remaining_tasks.md`、`src/models/parser_io.py`、`src/models/admin_queue.py`
+
+---
+
 ## 今後追記用フォーマット
 
 ```markdown

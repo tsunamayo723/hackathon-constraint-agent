@@ -15,7 +15,7 @@ from src.models import (
 )
 from src.parser_stub import parse as parse_stub
 from src.agents import parse as parse_gemini
-from src.storage import add_pending_request
+from src.storage import add_pending_request, find_pending_by_type, update_pending_request
 
 router = APIRouter(prefix="/parser", tags=["パーサ"])
 
@@ -93,18 +93,36 @@ def parse_input(body: dict = Body(openapi_examples=_parser_examples)) -> ParserO
     input_data = ParserInput.model_validate(body)
     output = _run_parse(input_data)
 
-    # 未翻訳項目を管理者キューに登録
+    # 未翻訳項目を管理者キューに登録（同じ未知type名はクラスタリングして1件に集約）
     for untrans in output.untranslated:
-        req_id = f"req_{uuid4().hex[:8]}"
-        untrans.pending_request_id = req_id
+        type_name = untrans.suggested_type_name or "unknown"
 
-        add_pending_request(PendingTypeRequest(
-            id=req_id,
-            suggested_type_name=untrans.suggested_type_name or "unknown",
-            source_texts=[untrans.source_text],
-            occurrence_count=1,
-            confidence=0.0,  # AI生成前なので0
-            created_at=datetime.now(),
-        ))
+        # type名が具体的なら、既存の承認待ちにまとめる（"unknown"はまとめない）
+        existing = find_pending_by_type(type_name) if type_name != "unknown" else None
+
+        if existing is not None:
+            existing.source_texts.append(untrans.source_text)
+            existing.occurrence_count += 1
+            # 見解類はまだ空なら補完（最初に付いたものを尊重）
+            if not existing.summary and untrans.summary:
+                existing.summary = untrans.summary
+                existing.ai_assessment = untrans.ai_assessment
+                existing.review_points = untrans.review_points
+            update_pending_request(existing)
+            untrans.pending_request_id = existing.id
+        else:
+            req_id = f"req_{uuid4().hex[:8]}"
+            untrans.pending_request_id = req_id
+            add_pending_request(PendingTypeRequest(
+                id=req_id,
+                suggested_type_name=type_name,
+                source_texts=[untrans.source_text],
+                occurrence_count=1,
+                summary=untrans.summary,
+                ai_assessment=untrans.ai_assessment,
+                review_points=untrans.review_points,
+                confidence=0.0,  # AI生成前なので0
+                created_at=datetime.now(),
+            ))
 
     return output

@@ -35,6 +35,14 @@ def get_pending_request(req_id: str) -> Optional[PendingTypeRequest]:
     return _pending_queue.get(req_id)
 
 
+def find_pending_by_type(type_name: str) -> Optional[PendingTypeRequest]:
+    """承認待ち（pending）の中から、同じ未知type名のリクエストを探す（クラスタリング用）。"""
+    for r in _pending_queue.values():
+        if r.status == "pending" and r.suggested_type_name == type_name:
+            return r
+    return None
+
+
 def update_pending_request(req: PendingTypeRequest) -> None:
     _pending_queue[req.id] = req
 

@@ -47,6 +47,9 @@ class _ParsedItem(BaseModel):
     params_json: str          # 既知のときの params をJSON文字列で（未知なら ""）
     confidence: float         # 0.0〜1.0
     reason: str               # 未知の理由 / 既知なら補足（空でも可）
+    summary: str = ""         # 一言で何のルールか（日本語）
+    ai_assessment: str = ""   # AIの見解
+    review_points: list[str] = []  # 確認してほしい点
 
 
 class _ParseResult(BaseModel):
@@ -72,11 +75,8 @@ class ParserAgent(GeminiAgent):
         for item in result.items:
             # ① 確信度が低い → 翻訳できなかった扱い
             if item.confidence < _MIN_CONFIDENCE:
-                untranslated.append(UntranslatedConstraint(
-                    source_text=item.source_text,
-                    suggested_type_name=item.type_name or None,
-                    reason=item.reason or "確信度が低いため、管理者が確認します",
-                ))
+                untranslated.append(_to_untranslated(
+                    item, item.reason or "確信度が低いため、管理者が確認します"))
                 continue
 
             # ② 既知タイプ → params を厳密検証してから採用
@@ -89,19 +89,13 @@ class ParserAgent(GeminiAgent):
                         confidence=item.confidence,
                     ))
                     continue
-                untranslated.append(UntranslatedConstraint(
-                    source_text=item.source_text,
-                    suggested_type_name=item.type_name,
-                    reason="ルールの形式が不完全だったため、管理者が確認します",
-                ))
+                untranslated.append(_to_untranslated(
+                    item, "ルールの形式が不完全だったため、管理者が確認します"))
                 continue
 
             # ③ 未知タイプ
-            untranslated.append(UntranslatedConstraint(
-                source_text=item.source_text,
-                suggested_type_name=item.type_name or None,
-                reason=item.reason or "未対応のルールのため、管理者が対応を準備します",
-            ))
+            untranslated.append(_to_untranslated(
+                item, item.reason or "未対応のルールのため、管理者が対応を準備します"))
 
         return ParserOutput(
             input_text=input_data.input_text,
@@ -109,6 +103,18 @@ class ParserAgent(GeminiAgent):
             untranslated=untranslated,
             parsed_at=datetime.now(),
         )
+
+
+def _to_untranslated(item: "_ParsedItem", reason: str) -> UntranslatedConstraint:
+    """中間アイテムから未翻訳項目を作る（要約・見解・確認点を引き継ぐ）。"""
+    return UntranslatedConstraint(
+        source_text=item.source_text,
+        suggested_type_name=item.type_name or None,
+        reason=reason,
+        summary=item.summary or None,
+        ai_assessment=item.ai_assessment or None,
+        review_points=item.review_points,
+    )
 
 
 def _try_build_constraint(type_name: str, params_json: str):

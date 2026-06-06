@@ -35,6 +35,11 @@ class PendingTypeRequest(BaseModel):
     source_texts: list[str]              # 同じ未知タイプに該当する自然言語の集合（クラスタリング結果）
     occurrence_count: int = 1            # 何件のリクエストで現れたか
 
+    # 人が読んで承認判断するための補助（パース時にFlashが付与）
+    summary: Optional[str] = None        # 一言で何のルールか（日本語）
+    ai_assessment: Optional[str] = None  # AIの見解（なぜ未知か／どう解釈したか）
+    review_points: list[str] = []        # 管理者に確認してほしい点
+
     # Gemini Pro が生成した内容
     suggested_schema: Optional[dict] = None       # 新typeのJSONスキーマ
     suggested_handler_code: Optional[str] = None  # ハンドラ関数のPythonコード

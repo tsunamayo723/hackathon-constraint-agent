@@ -17,8 +17,9 @@ st.set_page_config(page_title="制約管理エージェント", page_icon="🤖"
 pages = [
     st.Page("setup.py", title="① セットアップ", icon="⚙️"),
     st.Page("staff.py", title="② シフト作成の要望", icon="📝"),
+    st.Page("desired_shifts.py", title="③ 出勤希望CSV", icon="🗓️"),
     st.Page("admin.py", title="④ 管理者承認", icon="🛡️"),
-    # 今後ここに ③出勤希望CSV / ⑤シフト確認 を追加していく
+    st.Page("shift_view.py", title="⑤ シフト確認", icon="📅"),
 ]
 
 st.navigation(pages).run()

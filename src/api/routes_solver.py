@@ -16,6 +16,12 @@ from pydantic import ValidationError
 from src.models.parser_io import UntranslatedConstraint
 from src.models.solver_io import SolverInput, SolverOutput
 from src.solver.engine import solve
+from src.storage import (
+    get_availability,
+    get_frame,
+    get_masters,
+    get_policy_constraints,
+)
 
 router = APIRouter(prefix="/solver", tags=["ソルバー"])
 
@@ -116,3 +122,35 @@ def run_solver(body: dict = Body(openapi_examples=_run_examples)) -> SolverOutpu
         raise HTTPException(status_code=422, detail=e.errors())
 
     return solve(spec, pending)
+
+
+@router.post(
+    "/run-stored",
+    summary="保存済みデータからシフトを計算（一気通貫）",
+    response_model=SolverOutput,
+    description=(
+        "セットアップ済みのマスタ・営業情報・②の方針・③の出勤希望をまとめて使い、"
+        "シフトを計算します。各画面で登録した内容がそのまま反映されます。\n\n"
+        "- マスタ／営業情報が未登録なら 404\n"
+        "- 制約 = ②の翻訳済み制約 ＋ ③の出勤希望（availability）"
+    ),
+)
+def run_solver_stored() -> SolverOutput:
+    masters = get_masters()
+    frame = get_frame()
+    if masters is None:
+        raise HTTPException(status_code=404, detail="マスタが未登録です。① セットアップで登録してください。")
+    if frame is None:
+        raise HTTPException(status_code=404, detail="営業情報が未登録です。① セットアップで登録してください。")
+
+    constraints = get_policy_constraints() + get_availability()
+    try:
+        spec = SolverInput.model_validate({
+            "frame": frame.model_dump(mode="json"),
+            "masters": masters.model_dump(mode="json"),
+            "constraints": constraints,
+        })
+    except ValidationError as e:
+        raise HTTPException(status_code=422, detail=e.errors())
+
+    return solve(spec)

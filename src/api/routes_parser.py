@@ -15,7 +15,12 @@ from src.models import (
 )
 from src.parser_stub import parse as parse_stub
 from src.agents import parse as parse_gemini
-from src.storage import add_pending_request, find_pending_by_type, update_pending_request
+from src.storage import (
+    add_pending_request,
+    add_policy_constraints,
+    find_pending_by_type,
+    update_pending_request,
+)
 
 router = APIRouter(prefix="/parser", tags=["パーサ"])
 
@@ -92,6 +97,12 @@ _parser_examples = {
 def parse_input(body: dict = Body(openapi_examples=_parser_examples)) -> ParserOutput:
     input_data = ParserInput.model_validate(body)
     output = _run_parse(input_data)
+
+    # 翻訳できた制約はシフト計算用に蓄積（⑤で出勤希望と合算して解く）
+    add_policy_constraints([
+        {"type": t.constraint.type, "params": t.constraint.params.model_dump(mode="json")}
+        for t in output.translated
+    ])
 
     # 未翻訳項目を管理者キューに登録（同じ未知type名はクラスタリングして1件に集約）
     for untrans in output.untranslated:

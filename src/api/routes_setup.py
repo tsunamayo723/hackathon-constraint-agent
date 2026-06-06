@@ -13,7 +13,15 @@ from fastapi import APIRouter, HTTPException
 from pydantic import ValidationError
 
 from src.models import Frame, Masters
-from src.storage import get_frame, get_masters, save_frame, save_masters
+from src.models.constraints import AvailabilityParams
+from src.storage import (
+    get_availability,
+    get_frame,
+    get_masters,
+    save_availability,
+    save_frame,
+    save_masters,
+)
 
 router = APIRouter(prefix="/setup", tags=["セットアップ"])
 
@@ -108,3 +116,47 @@ def fetch_frame() -> Frame:
     if frame is None:
         raise HTTPException(status_code=404, detail="営業情報が未登録です。先に登録してください。")
     return frame
+
+
+# ── 出勤希望（desired_shifts CSV → availability制約） ────────────────
+
+@router.post(
+    "/desired-shifts",
+    summary="出勤希望の登録（CSV由来のavailability）",
+    description=(
+        "出勤希望CSVの各行（person_id / date / start / end / note）を availability制約に変換して保存します。\n\n"
+        "CSVに記載のない日時は『出勤不可』として扱われます（出勤希望ベース）。"
+    ),
+)
+def post_desired_shifts(records: list[dict]):
+    masters = get_masters()
+    known_person_ids = {p.id for p in masters.persons} if masters else None
+
+    availability: list[dict] = []
+    errors: list[str] = []
+    for i, row in enumerate(records, start=1):
+        try:
+            params = AvailabilityParams.model_validate(row)
+        except ValidationError as e:
+            msg = e.errors()[0].get("msg", "形式エラー")
+            errors.append(f"{i}行目: {msg}")
+            continue
+        if known_person_ids is not None and params.person_id not in known_person_ids:
+            errors.append(f"{i}行目: スタッフID '{params.person_id}' がマスタに存在しません")
+            continue
+        availability.append({"type": "availability", "params": params.model_dump(mode="json")})
+
+    if errors:
+        raise HTTPException(status_code=422, detail={"出勤希望エラー": errors})
+
+    save_availability(availability)
+    return {"結果": "出勤希望を登録しました", "件数": len(availability)}
+
+
+@router.get(
+    "/desired-shifts",
+    summary="登録済み出勤希望の取得",
+)
+def fetch_desired_shifts():
+    items = get_availability()
+    return {"件数": len(items), "items": items}

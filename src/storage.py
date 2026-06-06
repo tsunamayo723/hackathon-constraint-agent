@@ -78,3 +78,34 @@ def save_frame(frame: Frame) -> None:
 
 def get_frame() -> Optional[Frame]:
     return _frame
+
+
+# ── 制約の蓄積（シフト計算用） ──────────────────────────────────────
+# ②の方針（翻訳済み制約）と ③の出勤希望（availability）を貯め、⑤で合算して解く。
+# どちらも {"type": ..., "params": {...}} の dict 形式で保持する。
+
+_policy_constraints: list[dict] = []   # ②由来（headcount/separate 等）。追記。
+_availability: list[dict] = []         # ③由来（出勤希望CSV）。アップロードで置き換え。
+
+
+def add_policy_constraints(items: list[dict]) -> None:
+    """②の翻訳済み制約を追記する。"""
+    _policy_constraints.extend(items)
+
+
+def get_policy_constraints() -> list[dict]:
+    return list(_policy_constraints)
+
+
+def clear_policy_constraints() -> None:
+    _policy_constraints.clear()
+
+
+def save_availability(items: list[dict]) -> None:
+    """③の出勤希望（availability制約）を置き換え保存する。"""
+    global _availability
+    _availability = list(items)
+
+
+def get_availability() -> list[dict]:
+    return list(_availability)

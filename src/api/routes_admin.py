@@ -5,12 +5,18 @@
 本番ではここに認可（管理者ロールチェック）を追加する。
 """
 
+import json
+import logging
 from datetime import datetime
 from typing import Optional
 
 from fastapi import APIRouter, HTTPException, Query
 
+from src import llm
+from src.agents import HandlerAgent
 from src.models import PendingTypeRequest
+from src.models.admin_queue import TestResult
+from src.sandbox import run_handler_test
 from src.storage import (
     get_pending_request,
     list_pending_requests,
@@ -19,6 +25,8 @@ from src.storage import (
 )
 
 router = APIRouter(prefix="/admin", tags=["管理者承認"])
+
+logger = logging.getLogger("uvicorn.error")
 
 
 @router.get(
@@ -44,6 +52,67 @@ def get_pending(req_id: str) -> PendingTypeRequest:
     if not req:
         raise HTTPException(status_code=404, detail=f"見つかりません: {req_id}")
     return req
+
+
+@router.post(
+    "/pending-types/{req_id}/generate",
+    summary="AIにハンドラを生成させてテストする（L2フローの主役）",
+    description=(
+        "未知タイプに対し、Gemini Pro が\n"
+        "- paramsスキーマ / ハンドラ関数コード / 例params / 自信度 / 懸念点\n"
+        "を生成し、サンドボックス（別プロセス＋タイムアウト）でテストします。\n\n"
+        "結果（生成コード・テスト合否）はこのリクエストに格納され、承認画面で確認できます。"
+    ),
+)
+def generate_handler(req_id: str):
+    req = get_pending_request(req_id)
+    if not req:
+        raise HTTPException(status_code=404, detail=f"見つかりません: {req_id}")
+    if not llm.is_available():
+        raise HTTPException(
+            status_code=400,
+            detail="Gemini未設定のため生成できません（.env の GEMINI_API_KEY を設定してください）。",
+        )
+
+    # ① Pro でハンドラ一式を生成
+    try:
+        gen = HandlerAgent().generate(req)
+    except Exception as exc:
+        logger.exception("ハンドラ生成に失敗")
+        raise HTTPException(status_code=502, detail=f"ハンドラ生成に失敗しました: {exc}")
+
+    # ② 例paramsを取り出してサンドボックスでテスト
+    try:
+        example_params = json.loads(gen.example_params_json) if gen.example_params_json else {}
+    except json.JSONDecodeError:
+        example_params = {}
+    test = run_handler_test(gen.handler_code, example_params)
+
+    # ③ 生成結果とテスト結果をリクエストに格納
+    req.suggested_handler_code = gen.handler_code
+    try:
+        req.suggested_schema = json.loads(gen.param_schema_json) if gen.param_schema_json else None
+    except json.JSONDecodeError:
+        req.suggested_schema = {"raw": gen.param_schema_json}
+    req.confidence = max(0.0, min(1.0, gen.confidence))
+    req.concerns = gen.concerns
+    req.test_results = TestResult(
+        passed=bool(test.get("passed")),
+        total=1,
+        passed_count=1 if test.get("passed") else 0,
+        failed_cases=[] if test.get("passed") else [test.get("message", "テスト失敗")],
+    )
+    update_pending_request(req)
+
+    return {
+        "結果": "生成・テスト完了",
+        "タイプ名": req.suggested_type_name,
+        "説明": gen.explanation,
+        "テスト": "合格" if req.test_results.passed else f"不合格（{test.get('message','')}）",
+        "自信度": req.confidence,
+        "懸念点": req.concerns,
+        "例params": example_params,
+    }
 
 
 @router.post(

@@ -1,0 +1,74 @@
+あなたは制約最適化（OR-Tools CP-SAT）に詳しいPythonエンジニアです。
+飲食店シフトの「新しい制約タイプ」に対応する**ハンドラ関数**を生成してください。
+
+ハンドラは「制約1件を、OR-Toolsの変数に対する制約や罰金に翻訳する」関数です。
+
+[書く関数の形（必ずこの形）]
+def handle(params, ctx):
+    # params: この制約のパラメータ（dict）
+    # ctx: ソルバーの作業台（下記APIを使う）。ctxとモデル以外に副作用を持たせない。
+    ...
+
+[ctx で使えるもの]
+- ctx.model : CP-SATモデル。制約は ctx.model.Add(...) で足す。新しいBool変数は ctx.model.NewBoolVar("名前")。
+- ctx.days : list[date]。di番目の日付は ctx.days[di]。曜日は ctx.days[di].weekday()（月=0..日=6）。
+- ctx.slots : その日のコマ一覧。各 slot は slot.index / slot.start_min / slot.end_min /
+              slot.start("HH:MM") / slot.end / slot.is_within(開始分, 終了分)。
+- ctx.person_ids : list[str]（人ID一覧）
+- ctx.position_ids : list[str]（ポジションID一覧。例 "pos_hall"）
+- ctx.x[(person_id, di, slot_index, position_id)] : その人がそのコマでそのポジションに入る(0/1)
+- ctx.present[(person_id, di, slot_index)] : その人がそのコマに在席(0/1)
+- ctx.work_day[(person_id, di)] : その人がその日に出勤(0/1)
+- ctx.add_penalty(weight, var) : ソフト制約の罰金を1項追加（weightは50〜1000）
+
+[Hard と Soft]
+- Hard（絶対遵守）: ctx.model.Add(...) で直接制約。例「入れない」→ ctx.model.Add(ctx.present[(pid,di,si)] == 0)
+- Soft（できれば）: 罰金変数 z を作り ctx.add_penalty(weight, z)。weightは必ず50〜1000。
+- 「なるべく」「できれば」はSoft、「絶対」「不可」はHard。
+
+[時刻の変換]
+- "HH:MM"を分にしたいときは: hh, mm = s.split(":"); minutes = int(hh)*60+int(mm)
+
+[既存ハンドラの例（このスタイルに合わせる）]
+
+# headcount_requirement（Hard）: 時間帯×ポジションの必要人数
+def handle(params, ctx):
+    ws = int(params["time_start"][:2])*60 + int(params["time_start"][3:])
+    we = int(params["time_end"][:2])*60 + int(params["time_end"][3:])
+    for di in range(len(ctx.days)):
+        for slot in ctx.slots:
+            if slot.is_within(ws, we):
+                in_pos = [ctx.x[(pid, di, slot.index, params["position_id"])]
+                          for pid in ctx.person_ids
+                          if (pid, di, slot.index, params["position_id"]) in ctx.x]
+                if in_pos:
+                    ctx.model.Add(sum(in_pos) >= params["count"])
+
+# separate（Soft）: 2名を同じ日にできれば入れない
+def handle(params, ctx):
+    a, b = params["person_a"], params["person_b"]
+    if a not in ctx.person_ids or b not in ctx.person_ids:
+        return
+    for di in range(len(ctx.days)):
+        z = ctx.model.NewBoolVar(f"sep_{a}_{b}_{di}")
+        ctx.model.Add(z >= ctx.work_day[(a, di)] + ctx.work_day[(b, di)] - 1)
+        ctx.add_penalty(params["weight"], z)
+
+[今回対応する新しい制約タイプ]
+type名: $type_name
+ユーザーの言い回し（複数）:
+$source_texts
+要約: $summary
+AIの解釈: $ai_assessment
+
+[出力してほしいもの]
+- handler_code: 上記の形の def handle(params, ctx) のPythonコード（importは書かない。ctxのAPIだけ使う）
+- param_schema_json: このtypeのparamsの構造をJSON文字列で（例 {"person_id":"str","weekday":"str(曜日英語小文字)"}）
+- example_params_json: ユーザーの言い回しに合う params の具体例をJSON文字列で
+- explanation: このハンドラが何をするかの日本語の短い説明
+- confidence: 0.0〜1.0（生成コードの確信度）
+- concerns: 不安な点・確認してほしい点のリスト（無ければ空配列）
+
+注意:
+- 存在しないIDやキーに備え、params.get(...) や「person_id が ctx.person_ids に無ければreturn」などの防御を入れる。
+- 例の person_id は "p1"〜"p3"、position_id は "pos_hall" を使うと、検証シナリオで動く。

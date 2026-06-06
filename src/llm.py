@@ -10,7 +10,8 @@ APIキーは .env の GEMINI_API_KEY から読む。
 """
 
 import os
-from typing import Optional, Type, TypeVar
+import time
+from typing import Type, TypeVar
 
 from dotenv import load_dotenv
 from pydantic import BaseModel
@@ -57,6 +58,25 @@ def _get_client():
     return _client
 
 
+# Google側の一時的な障害（混雑等）を表すサイン。これらは自動リトライする。
+# 429（枠切れ）は待っても回復しないことが多いのでリトライしない（即エラーにする）。
+_TRANSIENT_SIGNS = ("UNAVAILABLE", "503", "500", "502", "504", "overloaded",
+                    "high demand", "INTERNAL", "deadline")
+
+_MAX_RETRIES = 3  # 初回 + リトライ。待ち時間は 1秒 → 2秒（指数バックオフ）
+
+
+def _is_transient(exc: Exception) -> bool:
+    """Google側の一時的なエラー（リトライで回復しうる）か判定する。"""
+    code = getattr(exc, "code", None) or getattr(exc, "status_code", None)
+    if code in (500, 502, 503, 504):
+        return True
+    msg = str(exc)
+    if "429" in msg or "RESOURCE_EXHAUSTED" in msg:
+        return False  # 枠切れはリトライ対象外
+    return any(sign in msg for sign in _TRANSIENT_SIGNS)
+
+
 def generate_structured(
     prompt: str,
     schema: Type[T],
@@ -67,24 +87,36 @@ def generate_structured(
     プロンプトを投げ、Pydanticスキーマに沿った構造化JSONを受け取って返す。
 
     temperature=0 で決定的寄りに（JSON変換は揺れないほうが良い）。
+    503など**一時的なエラーは自動リトライ**（指数バックオフ）。429は即エラー。
     """
     from google.genai import types
 
     client = _get_client()
-    resp = client.models.generate_content(
-        model=model,
-        contents=prompt,
-        config=types.GenerateContentConfig(
-            temperature=temperature,
-            response_mime_type="application/json",
-            response_schema=schema,
-        ),
+    config = types.GenerateContentConfig(
+        temperature=temperature,
+        response_mime_type="application/json",
+        response_schema=schema,
     )
-    # SDK がパース済みインスタンスを返す場合はそれを使う
-    if getattr(resp, "parsed", None) is not None:
-        return resp.parsed  # type: ignore[return-value]
-    # 念のためのフォールバック（テキストJSONを自前で検証）
-    return schema.model_validate_json(resp.text)
+
+    last_exc: Exception | None = None
+    for attempt in range(_MAX_RETRIES):
+        try:
+            resp = client.models.generate_content(model=model, contents=prompt, config=config)
+            # SDK がパース済みインスタンスを返す場合はそれを使う
+            if getattr(resp, "parsed", None) is not None:
+                return resp.parsed  # type: ignore[return-value]
+            # 念のためのフォールバック（テキストJSONを自前で検証）
+            return schema.model_validate_json(resp.text)
+        except Exception as exc:
+            last_exc = exc
+            # 一時的なエラーかつ残り試行があるなら、少し待って再試行
+            if _is_transient(exc) and attempt < _MAX_RETRIES - 1:
+                time.sleep(2 ** attempt)  # 1秒, 2秒, ...
+                continue
+            raise
+
+    # ここには通常到達しないが、保険
+    raise last_exc  # type: ignore[misc]
 
 
 def list_models() -> list[str]:

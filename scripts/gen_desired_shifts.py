@@ -1,8 +1,9 @@
 """
-デモ用 出勤希望CSV（desired_shifts.csv）を生成する
+デモ用 出勤希望CSV（desired_shifts.csv）を3パターン分生成する
 
-pattern_b_restaurant（30名）の各スタッフについて、対象期間の一部の日に
-出勤可能枠を割り当てる。一部の行には日ごとの備考(note)も付ける（将来のnote解釈用）。
+各パターン（cafe/restaurant/izakaya）の staff.csv を読み、対象期間の一部の日に
+出勤可能枠を割り当てる。**note（日ごとの自由記述）も多めに付ける**
+（将来の note のAI解釈デモ・B2b用のテストデータになる）。
 
 列: person_id, date, start, end, note
 実行: python scripts/gen_desired_shifts.py
@@ -13,43 +14,71 @@ import random
 from datetime import date, timedelta
 from pathlib import Path
 
-SRC = Path("data/sample/pattern_b_restaurant/staff.csv")
-OUT = Path("data/sample/pattern_b_restaurant/desired_shifts.csv")
+ROOT = Path("data/sample")
+PATTERNS = ["pattern_a_cafe", "pattern_b_restaurant", "pattern_c_izakaya"]
 
 PERIOD_START = date(2026, 11, 1)
 PERIOD_DAYS = 30
-OFFER_DAYS = 18          # 各人が出勤希望を出す日数（30日中）
-NOTES = ["この日は3時間だけ", "夕方から入りたい", "お迎えがあるので18時まで", "早番希望"]
+OFFER_DAYS = 18           # 各人が出勤希望を出す日数（30日中）
+NOTE_PROB = 0.30          # 各行に備考を付ける確率（多めに）
+
+# 日ごとの備考（自然言語）。B2bでAIが解釈する想定のバリエーション。
+NOTES = [
+    "この日は3時間だけ",
+    "18時までに上がりたい",
+    "オープンだけ入れます",
+    "夜のみ可",
+    "昼過ぎから入りたい",
+    "できれば早番",
+    "お迎えがあるので17時まで",
+    "テスト期間中なので短めに",
+    "この日は遅番希望",
+    "ラストまでOK",
+    "ランチだけ手伝えます",
+    "通院のため午前は不可",
+]
 
 
-def main() -> None:
-    rng = random.Random(42)
+def gen_for_pattern(folder: str, rng: random.Random) -> None:
+    src = ROOT / folder / "staff.csv"
+    out = ROOT / folder / "desired_shifts.csv"
 
-    with SRC.open(encoding="utf-8") as f:
+    with src.open(encoding="utf-8") as f:
         person_ids = [row["id"] for row in csv.DictReader(f)]
 
     all_days = [PERIOD_START + timedelta(days=i) for i in range(PERIOD_DAYS)]
 
     rows: list[list] = []
+    note_count = 0
     for pid in person_ids:
-        offered = rng.sample(all_days, k=OFFER_DAYS)
+        offered = rng.sample(all_days, k=min(OFFER_DAYS, len(all_days)))
         for d in sorted(offered):
-            # たまに時間帯を変える / たまに備考を付ける
             start, end = "11:00", "22:00"
-            note = ""
+            # たまに時間帯を変える
             if rng.random() < 0.15:
                 start, end = "17:00", "22:00"
-            if rng.random() < 0.10:
-                note = rng.choice(NOTES)
+            elif rng.random() < 0.15:
+                start, end = "11:00", "15:00"
+            # 備考を多めに付ける
+            note = rng.choice(NOTES) if rng.random() < NOTE_PROB else ""
+            if note:
+                note_count += 1
             rows.append([pid, d.isoformat(), start, end, note])
 
-    OUT.parent.mkdir(parents=True, exist_ok=True)
-    with OUT.open("w", encoding="utf-8", newline="") as f:
+    out.parent.mkdir(parents=True, exist_ok=True)
+    with out.open("w", encoding="utf-8", newline="") as f:
         w = csv.writer(f)
         w.writerow(["person_id", "date", "start", "end", "note"])
         w.writerows(rows)
 
-    print(f"生成: {OUT}（{len(rows)}行 / {len(person_ids)}名 × 約{OFFER_DAYS}日）")
+    print(f"[{folder}] {len(rows)}行 / {len(person_ids)}名 / note付き {note_count}行")
+
+
+def main() -> None:
+    # パターンごとに seed を変えて再現性を持たせる
+    for i, folder in enumerate(PATTERNS):
+        gen_for_pattern(folder, random.Random(100 + i))
+    print("完了: 3パターンの desired_shifts.csv を生成しました")
 
 
 if __name__ == "__main__":

@@ -62,6 +62,7 @@ class ParserAgent(GeminiAgent):
     model = llm.FLASH_MODEL
     schema = _ParseResult
     prompt_name = "parser"
+    thinking_budget = 0   # 抽出タスクなので思考オフ（コスト削減。思考トークンは出力課金のため）
 
     def parse(self, input_data: ParserInput) -> ParserOutput:
         result: _ParseResult = self.run_structured(

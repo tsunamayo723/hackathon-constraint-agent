@@ -36,6 +36,7 @@ class GeminiAgent:
     model: str = llm.FLASH_MODEL      # 既定は安いFlash。Proを使う役割は上書きする
     schema: Type[BaseModel]           # サブクラスで必ず指定
     prompt_name: str                  # サブクラスで必ず指定
+    thinking_budget: int | None = None  # 0で思考オフ（抽出タスク向け・コスト減）
 
     def build_prompt(self, **variables: str) -> str:
         return load_prompt(self.prompt_name, **variables)
@@ -43,4 +44,7 @@ class GeminiAgent:
     def run_structured(self, **variables: str):
         """プロンプトを組み立てて Gemini に投げ、schema 通りの構造化出力を返す。"""
         prompt = self.build_prompt(**variables)
-        return llm.generate_structured(prompt, schema=self.schema, model=self.model)
+        return llm.generate_structured(
+            prompt, schema=self.schema, model=self.model,
+            thinking_budget=self.thinking_budget,
+        )

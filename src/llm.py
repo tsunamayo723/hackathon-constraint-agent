@@ -83,12 +83,16 @@ def generate_structured(
     schema: Type[T],
     model: str = FLASH_MODEL,
     temperature: float = 0.0,
+    thinking_budget: int | None = None,
 ) -> T:
     """
     プロンプトを投げ、Pydanticスキーマに沿った構造化JSONを受け取って返す。
 
     temperature=0 で決定的寄りに（JSON変換は揺れないほうが良い）。
     503など**一時的なエラーは自動リトライ**（指数バックオフ）。429は即エラー。
+
+    thinking_budget=0 で「思考(thinking)」を無効化できる（Flashの抽出タスク向け）。
+    思考トークンは出力料金で課金されるため、不要なら0にするとコストが大きく下がる。
     """
     from google.genai import types
 
@@ -97,6 +101,10 @@ def generate_structured(
         temperature=temperature,
         response_mime_type="application/json",
         response_schema=schema,
+        thinking_config=(
+            types.ThinkingConfig(thinking_budget=thinking_budget)
+            if thinking_budget is not None else None
+        ),
     )
 
     last_exc: Exception | None = None
@@ -127,7 +135,8 @@ def _record_usage(model: str, resp) -> None:
     if meta is None:
         return
     in_tok = getattr(meta, "prompt_token_count", 0) or 0
-    out_tok = getattr(meta, "candidates_token_count", 0) or 0
+    # 出力＝回答トークン＋思考(thinking)トークン。思考も出力料金で課金されるため必ず加算する。
+    out_tok = (getattr(meta, "candidates_token_count", 0) or 0) + (getattr(meta, "thoughts_token_count", 0) or 0)
     try:
         from src import usage
         rec = usage.record(model, in_tok, out_tok)

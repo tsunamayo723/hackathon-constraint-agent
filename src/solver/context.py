@@ -46,6 +46,12 @@ class SolverContext:
         # ソフト制約の罰金項: (係数, 変数) のリスト。目的関数で最小化する。
         self.penalties: list[tuple[int, cp_model.IntVar]] = []
 
+        # 必要人数の「不足」項: (係数, 不足変数)。Hardにせず減点にすることで、
+        # 解けない状況でも「不足を最小化した暫定シフト」を必ず出力する。
+        self.shortages: list[tuple[int, cp_model.IntVar]] = []
+        # 不足の内訳（警告表示用）: (不足変数, {date, slot, position_id, required})
+        self.shortage_info: list[tuple] = []
+
         # availability ハンドラが書き込む可用枠:
         #   person_id -> {day_index -> [(start_min, end_min), ...]}
         # 1件でも登録された人は「出勤希望ベース」で枠外に入れなくなる。
@@ -54,3 +60,8 @@ class SolverContext:
     def add_penalty(self, weight: int, var: cp_model.IntVar) -> None:
         """ソフト制約の罰金を1項追加する（weightはモデル側で50〜1000にクリップ済み）"""
         self.penalties.append((weight, var))
+
+    def add_shortage(self, weight: int, var: cp_model.IntVar, info: dict) -> None:
+        """必要人数の不足を1項追加する（不足ほど大きく減点）。"""
+        self.shortages.append((weight, var))
+        self.shortage_info.append((var, info))

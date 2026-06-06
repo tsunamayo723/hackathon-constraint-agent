@@ -21,30 +21,43 @@ from src.solver.context import SolverContext
 from src.solver.slots import hhmm_to_min
 
 
+# 必要人数の「不足」1人あたりの減点。ソフト制約(50〜1000)より十分大きくし、
+# 「できるだけ必要人数を満たす」を最優先しつつ、満たせない時は不足を最小化した暫定解を出す。
+HEADCOUNT_SHORTAGE_PENALTY = 5000
+
+
 def handle_headcount(params: HeadcountParams, ctx: SolverContext) -> None:
     """
-    「この時間帯・このポジションに count 人」を Hard 制約にする。
+    「この時間帯・このポジションに count 人」を **Soft（不足は減点）** で表現する。
 
-    対象時間帯に重なる各コマについて、そのポジションに入る人数の合計 ≧ count。
+    Hardにすると人が足りない時にシフト自体が作れなくなる（infeasible）。
+    そこで「不足人数」を変数化して大きく減点し、**解けない状況でも
+    不足を最小化した暫定シフトを必ず出力**できるようにする。
     """
     win_start = hhmm_to_min(params.time_start)
     win_end = hhmm_to_min(params.time_end)
 
-    for di, _day in enumerate(ctx.days):
+    for di, day in enumerate(ctx.days):
         for slot in ctx.slots:
             if not slot.is_within(win_start, win_end):
                 continue
-            # そのコマ・そのポジションに入る全員の合計
             in_position = [
                 ctx.x[(pid, di, slot.index, params.position_id)]
                 for pid in ctx.person_ids
                 if (pid, di, slot.index, params.position_id) in ctx.x
             ]
+            # 不足変数 short ≧ 必要人数 − 配置人数（0以上）
+            short = ctx.model.NewIntVar(0, params.count, f"short_{params.position_id}_{di}_{slot.index}")
             if in_position:
-                ctx.model.Add(sum(in_position) >= params.count)
+                ctx.model.Add(short >= params.count - sum(in_position))
             else:
-                # 変数が1つも無い（ポジション未定義など）→ 必ず詰まる
-                ctx.model.Add(0 >= params.count)
+                ctx.model.Add(short == params.count)  # 配置できる変数が無い→全不足
+            ctx.add_shortage(HEADCOUNT_SHORTAGE_PENALTY, short, {
+                "date": str(day),
+                "slot": f"{slot.start}-{slot.end}",
+                "position_id": params.position_id,
+                "required": params.count,
+            })
 
 
 def handle_availability(params: AvailabilityParams, ctx: SolverContext) -> None:

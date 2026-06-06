@@ -86,6 +86,7 @@ def get_frame() -> Optional[Frame]:
 
 _policy_constraints: list[dict] = []   # ②由来（headcount/separate 等）。追記。
 _availability: list[dict] = []         # ③由来（出勤希望CSV）。アップロードで置き換え。
+_base_headcounts: list[dict] = []      # ①由来（必要人数フォーム）。送信で置き換え。
 
 
 def add_policy_constraints(items: list[dict]) -> None:
@@ -114,3 +115,13 @@ def get_availability() -> list[dict]:
 def clear_availability() -> None:
     global _availability
     _availability = []
+
+
+def save_base_headcounts(items: list[dict]) -> None:
+    """①の必要人数（headcount制約）を置き換え保存する。"""
+    global _base_headcounts
+    _base_headcounts = list(items)
+
+
+def get_base_headcounts() -> list[dict]:
+    return list(_base_headcounts)

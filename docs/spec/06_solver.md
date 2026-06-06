@@ -15,7 +15,7 @@
 
 | type | Hard/Soft | 役割 |
 |---|---|---|
-| `headcount_requirement` | Hard | 時間帯×ポジションの必要人数（≧ count） |
+| `headcount_requirement` | **Soft（不足は減点）** | 時間帯×ポジションの必要人数。不足は大きく減点（5000/人）。解けなくても暫定の最高点を出力 |
 | `availability` | Hard | 出勤可能枠。枠外コマは割当不可（0固定） |
 | `separate` | Soft | 同席したら罰金（weight 50〜1000） |
 

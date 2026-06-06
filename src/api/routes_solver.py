@@ -18,6 +18,7 @@ from src.models.solver_io import SolverInput, SolverOutput
 from src.solver.engine import solve
 from src.storage import (
     get_availability,
+    get_base_headcounts,
     get_frame,
     get_masters,
     get_policy_constraints,
@@ -144,7 +145,7 @@ def run_solver_stored() -> SolverOutput:
     if frame is None:
         raise HTTPException(status_code=404, detail="営業情報が未登録です。① セットアップで登録してください。")
 
-    constraints = get_policy_constraints() + get_availability()
+    constraints = get_base_headcounts() + get_policy_constraints() + get_availability()
     try:
         spec = SolverInput.model_validate({
             "frame": frame.model_dump(mode="json"),

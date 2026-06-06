@@ -74,7 +74,8 @@ class SolverMeta(BaseModel):
 
     seed: int
     elapsed_ms: int
-    objective: int          # 目的関数値（小さいほど良い）＝ soft_penalty + assignment_units
+    objective: int          # 目的関数値（小さいほど良い）
+    shortage_penalty: int = 0  # 必要人数の不足による減点（0なら全ブロック充足）
     soft_penalty: int = 0   # ソフト制約の罰金合計（小さいほど希望が叶っている）
     assignment_units: int = 0  # 割当コマ数の合計（総労働コマ）
 

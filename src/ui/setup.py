@@ -223,3 +223,64 @@ if frame_submitted:
             )
         except Exception as exc:
             st.error(f"エラーが発生しました: {exc}")
+
+st.divider()
+
+
+# ═══════════════════════════════════════════════════════════════════
+#  ③ 必要人数（時間帯×ポジションの基本人数）
+# ═══════════════════════════════════════════════════════════════════
+
+st.header("③ 必要人数")
+st.caption(
+    "時間帯×ポジションごとに、何人必要かを登録します（シフトの「需要」）。"
+    "ここが無いとソルバーに条件が無く、シフトが空になります。  \n"
+    "`position_id` はマスタのポジションID（例: pos_hall / pos_kitchen / pos_register）。"
+)
+
+_default_headcounts = pd.DataFrame([
+    {"slot_label": "ランチ", "time_start": "11:00", "time_end": "14:00", "position_id": "pos_hall", "count": 3},
+    {"slot_label": "ランチ", "time_start": "11:00", "time_end": "14:00", "position_id": "pos_kitchen", "count": 2},
+    {"slot_label": "ディナー", "time_start": "18:00", "time_end": "22:00", "position_id": "pos_hall", "count": 4},
+    {"slot_label": "ディナー", "time_start": "18:00", "time_end": "22:00", "position_id": "pos_kitchen", "count": 2},
+])
+
+hc_edited = st.data_editor(
+    _default_headcounts,
+    num_rows="dynamic",
+    use_container_width=True,
+    hide_index=True,
+    key="headcounts_editor",
+)
+
+if st.button("📤 必要人数を登録する", type="primary"):
+    records = []
+    for r in hc_edited.to_dict(orient="records"):
+        if not str(r.get("slot_label", "")).strip():
+            continue
+        try:
+            records.append({
+                "slot_label": str(r["slot_label"]).strip(),
+                "time_start": str(r["time_start"]).strip(),
+                "time_end": str(r["time_end"]).strip(),
+                "position_id": str(r["position_id"]).strip(),
+                "count": int(r["count"]),
+            })
+        except (ValueError, KeyError):
+            st.error("入力に不備があります（人数は整数で）。")
+            st.stop()
+    try:
+        resp = requests.post(f"{API_URL}/setup/headcounts", json=records, timeout=15)
+        if resp.status_code == 200:
+            st.success(f"✅ 必要人数を登録しました（{resp.json()['件数']} 行）")
+        elif resp.status_code == 422:
+            errs = resp.json().get("detail", {}).get("必要人数エラー", [])
+            st.error("登録エラー：")
+            for e in errs:
+                st.markdown(f"- {e}")
+        else:
+            st.error(f"登録に失敗しました（{resp.status_code}）: {resp.text}")
+    except requests.exceptions.ConnectionError:
+        st.error("APIサーバーに接続できません。")
+    except Exception as exc:
+        st.error(f"エラーが発生しました: {exc}")

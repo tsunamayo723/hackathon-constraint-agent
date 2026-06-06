@@ -78,10 +78,11 @@ def solve(
     _apply_availability(ctx)
 
     # ── 目的関数 ────────────────────────────────────────────────
-    # ソフト罰金の合計 ＋ 総割当数（過剰配置を抑える軽い項）
+    # 必要人数の不足ペナルティ（最優先で小さく）＋ソフト罰金＋総割当数（過剰配置抑制）
     penalty_terms = [w * z for (w, z) in ctx.penalties]
+    shortage_terms = [w * z for (w, z) in ctx.shortages]
     total_assigned = list(ctx.x.values())
-    model.Minimize(sum(penalty_terms) + sum(total_assigned))
+    model.Minimize(sum(shortage_terms) + sum(penalty_terms) + sum(total_assigned))
 
     # ── 求解 ────────────────────────────────────────────────────
     solver = cp_model.CpSolver()
@@ -96,7 +97,9 @@ def solve(
     if result in (cp_model.OPTIMAL, cp_model.FEASIBLE):
         assignments = _extract_assignments(ctx, solver)
         soft_penalty = sum(w * solver.Value(z) for (w, z) in ctx.penalties)
+        shortage_penalty = sum(w * solver.Value(z) for (w, z) in ctx.shortages)
         assignment_units = sum(solver.Value(x) for x in ctx.x.values())
+        warnings += _understaffed_warnings(ctx, solver)
         return SolverOutput(
             status="solved",
             shift_status=shift_status,
@@ -105,6 +108,7 @@ def solve(
                 elapsed_ms=elapsed_ms,
                 objective=int(solver.ObjectiveValue()),
                 soft_penalty=int(soft_penalty),
+                shortage_penalty=int(shortage_penalty),
                 assignment_units=int(assignment_units),
             ),
             assignments=assignments,
@@ -224,6 +228,23 @@ def _merge_consecutive(on_slots: list[Slot]) -> list[list[Slot]]:
         else:
             blocks.append([slot])
     return blocks
+
+
+def _understaffed_warnings(ctx: SolverContext, solver: cp_model.CpSolver) -> list[SolverWarning]:
+    """解の中で必要人数に届かなかったコマを警告にする（暫定シフトの不足箇所）。"""
+    warnings: list[SolverWarning] = []
+    for short_var, info in ctx.shortage_info:
+        v = solver.Value(short_var)
+        if v > 0:
+            warnings.append(SolverWarning(
+                type="understaffed",
+                affected_date=info["date"],
+                affected_time=f"{info['slot']} / {info['position_id']}",
+                shortage=v,
+            ))
+            if len(warnings) >= 20:  # 多すぎると読みにくいので打ち切り
+                break
+    return warnings
 
 
 def _is_available(ctx: SolverContext, pid: str, di: int, slot: Slot) -> bool:

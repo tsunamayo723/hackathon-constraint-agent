@@ -92,7 +92,7 @@ if submitted:
                     "input_text": input_text.strip(),
                     "person_id": person_id.strip() or None,
                 },
-                timeout=15,
+                timeout=90,  # Geminiの応答＋リトライ待ちを見込んで長めに
             )
             # エラー時は本文の detail（日本語の理由）を取り出して表示する
             if resp.status_code != 200:
@@ -183,8 +183,10 @@ if submitted:
     else:
         st.caption("確認中の要望はありません。")
 
-    # シフト表そのものは ⑤ シフト確認画面（実装予定）で表示する。
+    # 作成者はこのまま計算へ進める（③要望→④計算は同じ作成者の一連の操作）
     st.divider()
-    st.caption(
-        "📋 計算されたシフト表は **⑤ シフト確認画面（実装予定）** で確認します。"
-    )
+    st.caption("要望を入れ終えたら、シフトを計算します。")
+
+# 計算画面への導線（送信の有無に関わらず常に表示）
+if st.button("▶ ④ シフト計算・確認へ進む", type="primary"):
+    st.switch_page("shift_view.py")

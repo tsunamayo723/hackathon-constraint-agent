@@ -69,17 +69,17 @@ def test_headcount_is_satisfied():
     assert len(out.assignments) == 1
 
 
-def test_headcount_infeasible_diagnoses_shortage():
-    # 必要3名に対し在籍2名 → 充足不能
+def test_headcount_shortage_is_best_effort_not_infeasible():
+    # 必要3名に対し在籍2名 → Hardではなく不足を減点。解けない状況でも暫定シフトを出す。
     out = solve(_spec([{
         "type": "headcount_requirement",
         "params": {"slot_label": "L", "time_start": "11:00", "time_end": "12:00",
                    "position_id": "pos_hall", "count": 3},
     }]))
-    assert out.status == "infeasible"
-    assert out.blocking_constraints
-    assert out.blocking_constraints[0].type == "understaffed"
-    assert "可用2名" in out.blocking_constraints[0].detail
+    assert out.status == "solved"          # infeasibleにならず暫定解が出る
+    assert len(out.assignments) == 2       # 配置できる2名は配置
+    assert out.meta.shortage_penalty > 0   # 不足ぶんは減点
+    assert any(w.type == "understaffed" and w.shortage == 1 for w in out.warnings)
 
 
 # ── availability ──────────────────────────────────────────────────

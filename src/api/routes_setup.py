@@ -13,15 +13,17 @@ from fastapi import APIRouter, HTTPException
 from pydantic import ValidationError
 
 from src.models import Frame, Masters
-from src.models.constraints import AvailabilityParams
+from src.models.constraints import AvailabilityParams, HeadcountParams
 from src.storage import (
     clear_availability,
     clear_policy_constraints,
     get_availability,
+    get_base_headcounts,
     get_frame,
     get_masters,
     get_policy_constraints,
     save_availability,
+    save_base_headcounts,
     save_frame,
     save_masters,
 )
@@ -165,6 +167,35 @@ def fetch_desired_shifts():
     return {"件数": len(items), "items": items}
 
 
+@router.post(
+    "/headcounts",
+    summary="必要人数の登録（時間帯×ポジションの人数）",
+    description="基本の必要人数を登録します。各行: slot_label / time_start / time_end / position_id / count。",
+)
+def post_headcounts(records: list[dict]):
+    masters = get_masters()
+    known_pos = {p.id for p in masters.positions} if masters else None
+
+    items: list[dict] = []
+    errors: list[str] = []
+    for i, row in enumerate(records, start=1):
+        try:
+            params = HeadcountParams.model_validate(row)
+        except ValidationError as e:
+            errors.append(f"{i}行目: {e.errors()[0].get('msg', '形式エラー')}")
+            continue
+        if known_pos is not None and params.position_id not in known_pos:
+            errors.append(f"{i}行目: ポジションID '{params.position_id}' がマスタに存在しません")
+            continue
+        items.append({"type": "headcount_requirement", "params": params.model_dump(mode="json")})
+
+    if errors:
+        raise HTTPException(status_code=422, detail={"必要人数エラー": errors})
+
+    save_base_headcounts(items)
+    return {"結果": "必要人数を登録しました", "件数": len(items)}
+
+
 @router.get(
     "/summary",
     summary="シフト計算に使う保存内容の要約",
@@ -179,7 +210,8 @@ def setup_summary():
     type_counts: dict[str, int] = {}
     for c in policy:
         type_counts[c["type"]] = type_counts.get(c["type"], 0) + 1
-    # 必要人数（headcount）の一覧（⑤の需要サマリ用）
+    # 必要人数（headcount）の一覧（⑤の需要サマリ用）。①フォーム由来＋②NL由来の両方。
+    base = get_base_headcounts()
     demands = [
         {
             "slot_label": c["params"].get("slot_label"),
@@ -187,7 +219,7 @@ def setup_summary():
             "position_id": c["params"].get("position_id"),
             "count": c["params"].get("count"),
         }
-        for c in policy if c["type"] == "headcount_requirement"
+        for c in (base + [p for p in policy if p["type"] == "headcount_requirement"])
     ]
     return {
         "マスタ登録": masters is not None,

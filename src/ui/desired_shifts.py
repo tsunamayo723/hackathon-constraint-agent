@@ -76,3 +76,32 @@ if uploaded is not None:
             )
         except Exception as exc:
             st.error(f"エラーが発生しました: {exc}")
+
+
+# ── 備考(note)のAI解釈 ──────────────────────────────────────────────
+st.divider()
+st.subheader("📝 備考をAIで解釈して反映")
+st.caption(
+    "登録済みの出勤希望のうち**備考付きの行**を、AIがまとめて解釈し、"
+    "出勤可能枠を補正します（例「お迎えで17時まで」→ 17時終わりに）。  \n"
+    "コスト対策で**バッチ処理**します。押した時だけ実行（＝課金タイミングを自分で制御）。"
+)
+if st.button("📝 備考をAIで解釈する", type="secondary"):
+    with st.spinner("AIが備考を解釈中（バッチ）..."):
+        try:
+            r = requests.post(f"{API_URL}/setup/interpret-notes", timeout=120)
+            if r.status_code == 200:
+                d = r.json()
+                st.success(
+                    f"✅ {d['結果']}  \n"
+                    f"解釈 {d.get('解釈件数', 0)} 件 / 枠を調整 {d.get('調整件数', 0)} 件 / "
+                    f"解釈できず {d.get('解釈できなかった件数', 0)} 件"
+                )
+                st.caption("「⑤ シフト確認」で再計算すると反映されます。")
+            else:
+                detail = r.json().get("detail", r.text)
+                st.error(f"解釈に失敗しました（{r.status_code}）：{detail}")
+        except requests.exceptions.ConnectionError:
+            st.error("APIサーバーに接続できません。")
+        except Exception as exc:
+            st.error(f"エラーが発生しました: {exc}")

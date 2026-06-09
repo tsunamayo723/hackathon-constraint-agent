@@ -17,8 +17,9 @@
 | ✅ | A2 管理者承認画面(admin.py) | キューを画面表示。前面=type/要約/自信度/テスト/確認点、タブ=コード/スキーマ/元発言/JSON。未生成は生成ボタン。承認/却下 | 完了 | — |
 | ✅ | **A1b 生成ハンドラの動的登録** | 承認→生成コードを動的ハンドラ登録→`SolverInput.dynamic_constraints`経由でソルバーが適用。未登録typeは警告 | 完了 | — |
 | ✅ | **B2a CSV→ソルバー一気通貫** | ③出勤希望CSV→availability保存、②方針も保存、`/solver/run-stored`で合算して計算、⑤シフト確認画面で表示 | 完了 | — |
-| **次** | B2b note のAI解釈（バッチ） | note付き行をまとめてパーサへ→制約に統合（完成版の定義） | 未 | 9/10 |
-| 次 | A1c 承認後の自動再計算＋通知 | 承認→影響シフトを再計算しdynamic_constraint自動付与→暫定→確定 | 未 | 8/10 |
+| ✅ | B2b note のAI解釈（バッチ） | 備考をFlashでバッチ解釈→出勤可能枠を補正。`POST /setup/interpret-notes`＋③ボタン。完成版の定義を達成 | 完了 | — |
+| **次** | A1c 承認後の自動再計算＋通知 | 承認→影響シフトを再計算しdynamic_constraint自動付与→暫定→確定 | 未 | 8/10 |
+| 次 | C ハンドラ拡充 | min_rest_interval/limit_consecutive/role・skill要件 等 | 未 | 8/10 |
 | 4 | B2a CSV→ソルバー（構造化） | ③出勤希望CSVアップ→availability直変換→/solver/run | 未 | 8/10 |
 | 5 | B2b note のAI解釈（バッチ） | note付き行をまとめてパーサへ→制約に統合 | 未 | 9/10 |
 | 6 | B3 シフト確認画面(⑤) | 暫定/確定バッジ・差分表示 | 未 | 7/10 |

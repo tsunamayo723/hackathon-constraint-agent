@@ -50,10 +50,12 @@ if m.status_code != 200 or f.status_code != 200:
 
 # 計算に使う制約の内訳（蓄積の可視化）
 demands: list[dict] = []
+unreflected_notes: list[dict] = []
 s = _safe_get("/setup/summary")
 if s is not None and s.status_code == 200:
     summary = s.json()
     demands = summary.get("必要人数", [])
+    unreflected_notes = summary.get("未反映の備考", [])
     st.caption(
         f"📋 計算に使う制約：方針 {summary['方針の制約数']}件 "
         f"{summary['方針の内訳']} ／ 出勤希望 {summary['出勤希望(availability)件数']}件"
@@ -197,13 +199,27 @@ if st.button("🧮 シフトを計算する", type="primary"):
                         "（出した枠のうち実際に勤務に入った割合）"
                     )
 
+                # 未反映の備考を person_id ごとにまとめる（スタッフ別の「未反映の希望」用）
+                unref_by_person: dict[str, list[str]] = {}
+                for n in unreflected_notes:
+                    unref_by_person.setdefault(n["person_id"], []).append(f"{n['date']}「{n['note']}」")
+
                 with st.expander("スタッフ別の詳細", expanded=False):
                     st.dataframe(pd.DataFrame([
                         {"スタッフ": s["name"], "出勤コマ": s["assigned_slots"], "出勤日数": s["work_days"],
                          "希望枠": s["offered_slots"] if s["offered_slots"] is not None else "—",
-                         "消化率(%)": s["utilization"] if s["utilization"] is not None else "—"}
+                         "消化率(%)": s["utilization"] if s["utilization"] is not None else "—",
+                         "未反映の希望": " / ".join(unref_by_person.get(s["person_id"], [])) or "—"}
                         for s in ev["staff_stats"]
                     ]), use_container_width=True, hide_index=True)
+
+        # ── ⚠️ 未反映の備考（要確認＝AIが自動反映できなかった希望） ──
+        if unreflected_notes:
+            st.warning(f"⚠️ **未反映の備考 {len(unreflected_notes)}件**（自動反映できず・人が確認してください）")
+            for n in unreflected_notes[:20]:
+                st.markdown(f"- {n['person_id']} {n['date']}：「{n['note']}」")
+            if len(unreflected_notes) > 20:
+                st.caption(f"…ほか {len(unreflected_notes) - 20} 件")
 
         # ── 未反映の要望（暫定の理由） ────────────────────────────
         pending = out.get("pending_constraints", [])

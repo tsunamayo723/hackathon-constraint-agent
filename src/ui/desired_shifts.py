@@ -92,12 +92,22 @@ if st.button("📝 備考をAIで解釈する", type="secondary"):
             r = requests.post(f"{API_URL}/setup/interpret-notes", timeout=120)
             if r.status_code == 200:
                 d = r.json()
+                applied = d.get("反映した備考", [])
+                unreflected = d.get("未反映の備考", [])
                 st.success(
-                    f"✅ {d['結果']}  \n"
-                    f"解釈 {d.get('解釈件数', 0)} 件 / 枠を調整 {d.get('調整件数', 0)} 件 / "
-                    f"解釈できず {d.get('解釈できなかった件数', 0)} 件"
+                    f"解釈 {d.get('解釈件数', 0)} 件 ／ ✅ 反映 {len(applied)} 件 ／ "
+                    f"⚠️ 未反映 {len(unreflected)} 件"
                 )
-                st.caption("「⑤ シフト確認」で再計算すると反映されます。")
+                if applied:
+                    st.markdown("**✅ 反映した備考（出勤可能枠を補正）**")
+                    for n in applied[:30]:
+                        st.markdown(f"- {n['person_id']} {n['date']}：「{n['note']}」→ {n['summary']}")
+                if unreflected:
+                    st.markdown("**⚠️ 未反映の備考（時間以外の希望など・人が確認）**")
+                    for n in unreflected[:30]:
+                        st.markdown(f"- {n['person_id']} {n['date']}：「{n['note']}」")
+                    st.caption("これらは自動反映できていません。⑤でも『未反映の備考』として表示され、手当てが必要です。")
+                st.caption("「⑤ シフト確認」で再計算すると、反映ぶんが反映されます。")
             else:
                 detail = r.json().get("detail", r.text)
                 st.error(f"解釈に失敗しました（{r.status_code}）：{detail}")

@@ -19,16 +19,19 @@ from src.models import Frame, Masters
 from src.models.constraints import AvailabilityParams, HeadcountParams
 from src.storage import (
     clear_availability,
+    clear_note_results,
     clear_policy_constraints,
     get_availability,
     get_base_headcounts,
     get_frame,
     get_masters,
+    get_note_results,
     get_policy_constraints,
     save_availability,
     save_base_headcounts,
     save_frame,
     save_masters,
+    save_note_results,
 )
 
 router = APIRouter(prefix="/setup", tags=["セットアップ"])
@@ -236,6 +239,7 @@ def setup_summary():
         "方針の内訳": type_counts,
         "必要人数": demands,
         "出勤希望(availability)件数": len(avail),
+        "未反映の備考": [n for n in get_note_results() if not n["applied"]],
     }
 
 
@@ -247,6 +251,7 @@ def setup_summary():
 def reset_constraints():
     clear_policy_constraints()
     clear_availability()
+    clear_note_results()
     return {"結果": "方針と出勤希望をクリアしました"}
 
 
@@ -290,31 +295,42 @@ def interpret_notes():
         logger.exception("備考の解釈に失敗")
         raise HTTPException(status_code=502, detail=f"備考の解釈に失敗しました: {exc}")
 
+    # 結果をindex順に引けるようにする
+    by_index = {r.index: r for r in results}
+
+    note_results: list[dict] = []   # ✅適用 / ⚠️未反映 の分類（保存・表示用）
     adjusted = 0
-    not_interpretable = 0
-    for r in results:
-        if r.index < 0 or r.index >= len(noted_idx):
-            continue
-        if not r.interpretable:
-            not_interpretable += 1
-            continue
-        params = availability[noted_idx[r.index]]["params"]
-        cur_s, cur_e = hhmm_to_min(params["start"]), hhmm_to_min(params["end"])
+    for item in items:
+        rec = availability[noted_idx[item["index"]]]["params"]
+        r = by_index.get(item["index"])
         changed = False
-        # 元の枠の内側に収まる補正だけ適用（枠は広げない）
-        if r.new_start and cur_s <= hhmm_to_min(r.new_start) <= cur_e:
-            params["start"] = r.new_start
-            changed = True
-        if r.new_end and cur_s <= hhmm_to_min(r.new_end) <= cur_e:
-            params["end"] = r.new_end
-            changed = True
+        if r is not None and r.interpretable:
+            cur_s, cur_e = hhmm_to_min(rec["start"]), hhmm_to_min(rec["end"])
+            # 元の枠の内側に収まる補正だけ適用（枠は広げない）
+            if r.new_start and cur_s <= hhmm_to_min(r.new_start) <= cur_e:
+                rec["start"] = r.new_start
+                changed = True
+            if r.new_end and cur_s <= hhmm_to_min(r.new_end) <= cur_e:
+                rec["end"] = r.new_end
+                changed = True
+
+        summary = (r.note_summary if r and r.note_summary else item["note"])
         if changed:
             adjusted += 1
+            summary = f"{summary}（{rec['start']}〜{rec['end']} に補正）"
+        note_results.append({
+            "person_id": item["person_id"], "date": item["date"],
+            "note": item["note"], "applied": changed, "summary": summary,
+        })
 
     save_availability(availability)
+    save_note_results(note_results)
+
+    applied = [n for n in note_results if n["applied"]]
+    unreflected = [n for n in note_results if not n["applied"]]
     return {
-        "結果": "備考を解釈して反映しました",
+        "結果": "備考を解釈しました",
         "解釈件数": len(items),
-        "調整件数": adjusted,
-        "解釈できなかった件数": not_interpretable,
+        "反映した備考": applied,
+        "未反映の備考": unreflected,
     }

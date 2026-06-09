@@ -125,3 +125,23 @@ def save_base_headcounts(items: list[dict]) -> None:
 
 def get_base_headcounts() -> list[dict]:
     return list(_base_headcounts)
+
+
+# ── 備考(note)の解釈結果（✅適用 / ⚠️未反映） ───────────────────────
+# 各要素: {person_id, date, note, applied(bool), summary}
+_note_results: list[dict] = []
+
+
+def save_note_results(items: list[dict]) -> None:
+    """interpret-notes の分類結果を置き換え保存する。"""
+    global _note_results
+    _note_results = list(items)
+
+
+def get_note_results() -> list[dict]:
+    return list(_note_results)
+
+
+def clear_note_results() -> None:
+    global _note_results
+    _note_results = []

@@ -1,6 +1,6 @@
 # 仕様書 05 — セットアップ入出力（マスタ・営業情報）
 
-*最終更新: 2026-06-02*
+*最終更新: 2026-06-10*
 
 ---
 
@@ -106,6 +106,32 @@ p01,田中花子,r_leader,sk_cashier;sk_bar;sk_open;sk_close
 ### GET /setup/frame
 
 登録済み営業情報を取得。未登録なら `404`。
+
+### POST /setup/desired-shifts ／ GET /setup/desired-shifts
+
+出勤希望CSV（person_id / date / start / end / note）を `availability` 制約として保存。
+CSVに無い日時は**出勤不可**として扱う（出勤希望ベース）。
+
+### POST /setup/headcounts
+
+基本の必要人数（slot_label / time_start / time_end / position_id / count、任意で date）を保存。
+
+### POST /setup/interpret-notes（2026-06-10: 3分類に拡張）
+
+保存済み出勤希望の**備考(note)付き行だけ**を Gemini Flash（思考オフ）で**バッチ解釈**し、3分類する:
+
+| 分類 | 応答キー | 動作 |
+|---|---|---|
+| ✅ 時間補正 | `反映した備考` | 出勤可能枠の start/end を補正（枠の内側のみ） |
+| 🆕 新ルール候補 | `新ルール候補` | **管理者の承認キューへ登録**（同type名は1件に集約・再実行で二重登録しない） |
+| ⚠️ 申し送り | `未反映の備考` | 反映せず正直に可視化（④画面で要確認表示） |
+
+分類結果は storage（`note_results`、各行 `status: applied/pending/unreflected`）に保存され、
+`GET /setup/summary` の `未反映の備考` や ④画面のスタッフ別「未反映の希望」列に使われる。
+
+### GET /setup/summary ／ POST /setup/reset-constraints
+
+計算に使う保存内容の要約（必要人数・方針内訳・未反映の備考など）／②③の蓄積のクリア。
 
 ---
 

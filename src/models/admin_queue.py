@@ -36,6 +36,10 @@ class PendingTypeRequest(BaseModel):
     source_texts: list[str]              # 同じ未知タイプに該当する自然言語の集合（クラスタリング結果）
     occurrence_count: int = 1            # 何件のリクエストで現れたか
 
+    # 出どころの構造化記録。承認後に「誰の・いつの要望か」をparams化する材料（T2で使用）。
+    # 各要素: {person_id, date, source_text, origin: "note"(CSV備考) | "policy"(②方針入力)}
+    occurrences: list[dict] = []
+
     # 人が読んで承認判断するための補助（パース時にFlashが付与）
     summary: Optional[str] = None        # 一言で何のルールか（日本語）
     ai_assessment: Optional[str] = None  # AIの見解（なぜ未知か／どう解釈したか）

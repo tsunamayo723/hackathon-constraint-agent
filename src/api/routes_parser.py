@@ -108,12 +108,19 @@ def parse_input(body: dict = Body(openapi_examples=_parser_examples)) -> ParserO
     for untrans in output.untranslated:
         type_name = untrans.suggested_type_name or "unknown"
 
+        # 出どころの構造化記録（承認後のparams化=T2で「誰の要望か」を引くため）
+        occurrence = {
+            "person_id": input_data.person_id, "date": None,
+            "source_text": untrans.source_text, "origin": "policy",
+        }
+
         # type名が具体的なら、既存の承認待ちにまとめる（"unknown"はまとめない）
         existing = find_pending_by_type(type_name) if type_name != "unknown" else None
 
         if existing is not None:
             existing.source_texts.append(untrans.source_text)
             existing.occurrence_count += 1
+            existing.occurrences.append(occurrence)
             # 見解類はまだ空なら補完（最初に付いたものを尊重）
             if not existing.summary and untrans.summary:
                 existing.summary = untrans.summary
@@ -129,6 +136,7 @@ def parse_input(body: dict = Body(openapi_examples=_parser_examples)) -> ParserO
                 suggested_type_name=type_name,
                 source_texts=[untrans.source_text],
                 occurrence_count=1,
+                occurrences=[occurrence],
                 summary=untrans.summary,
                 ai_assessment=untrans.ai_assessment,
                 review_points=untrans.review_points,

@@ -4,7 +4,8 @@
 desired_shifts.csv（person_id / date / start / end / note）をアップロードし、
 availability制約としてバックエンドに保存する（経路B）。
 
-※ note列（日ごとの自由記述）は保存される。AIによる解釈は次フェーズ（B2b）。
+※ note列（日ごとの自由記述）は保存され、下の「備考をAIで解釈」でバッチ解釈する
+（✅時間補正 / 🆕新ルール候補→承認キュー / ⚠️申し送り の3分類）。
 """
 
 import pandas as pd
@@ -54,7 +55,7 @@ if uploaded is not None:
             resp = requests.post(f"{API_URL}/setup/desired-shifts", json=records, timeout=30)
             if resp.status_code == 200:
                 st.success(f"✅ 出勤希望を登録しました（{resp.json()['件数']} 件）")
-                st.caption("「⑤ シフト確認」画面で計算できます。")
+                st.caption("「④ シフト計算・確認」画面で計算できます。")
             elif resp.status_code == 422:
                 detail = resp.json().get("detail", {})
                 errs = detail.get("出勤希望エラー", detail)
@@ -82,8 +83,10 @@ if uploaded is not None:
 st.divider()
 st.subheader("📝 備考をAIで解釈して反映")
 st.caption(
-    "登録済みの出勤希望のうち**備考付きの行**を、AIがまとめて解釈し、"
-    "出勤可能枠を補正します（例「お迎えで17時まで」→ 17時終わりに）。  \n"
+    "登録済みの出勤希望のうち**備考付きの行**を、AIがまとめて解釈し、3つに分類します。  \n"
+    "✅ その日の時間補正（例「お迎えで17時まで」→ 17時終わりに）  \n"
+    "🆕 新しいルール候補（例「毎週水曜NG」→ 管理者の承認キューへ）  \n"
+    "⚠️ どちらでもない（申し送りとして表示）  \n"
     "コスト対策で**バッチ処理**します。押した時だけ実行（＝課金タイミングを自分で制御）。"
 )
 if st.button("📝 備考をAIで解釈する", type="secondary"):
@@ -93,21 +96,33 @@ if st.button("📝 備考をAIで解釈する", type="secondary"):
             if r.status_code == 200:
                 d = r.json()
                 applied = d.get("反映した備考", [])
+                new_rules = d.get("新ルール候補", [])
                 unreflected = d.get("未反映の備考", [])
                 st.success(
                     f"解釈 {d.get('解釈件数', 0)} 件 ／ ✅ 反映 {len(applied)} 件 ／ "
-                    f"⚠️ 未反映 {len(unreflected)} 件"
+                    f"🆕 新ルール候補 {len(new_rules)} 件 ／ ⚠️ 未反映 {len(unreflected)} 件"
                 )
                 if applied:
                     st.markdown("**✅ 反映した備考（出勤可能枠を補正）**")
                     for n in applied[:30]:
                         st.markdown(f"- {n['person_id']} {n['date']}：「{n['note']}」→ {n['summary']}")
+                if new_rules:
+                    st.markdown("**🆕 新しいルール候補（管理者の承認キューに送りました）**")
+                    for n in new_rules[:30]:
+                        st.markdown(
+                            f"- {n['person_id']} {n['date']}：「{n['note']}」→ "
+                            f"推定タイプ `{n['suggested_type_name']}`"
+                        )
+                    st.caption(
+                        "「⑤ 管理者承認」でAIがハンドラ（処理コード）を生成し、"
+                        "承認されると以降の計算に反映できるようになります。"
+                    )
                 if unreflected:
-                    st.markdown("**⚠️ 未反映の備考（時間以外の希望など・人が確認）**")
+                    st.markdown("**⚠️ 未反映の備考（ルールでも時間でもない・人が確認）**")
                     for n in unreflected[:30]:
                         st.markdown(f"- {n['person_id']} {n['date']}：「{n['note']}」")
-                    st.caption("これらは自動反映できていません。⑤でも『未反映の備考』として表示され、手当てが必要です。")
-                st.caption("「⑤ シフト確認」で再計算すると、反映ぶんが反映されます。")
+                    st.caption("これらは自動反映できていません。④でも『未反映の備考』として表示され、手当てが必要です。")
+                st.caption("「④ シフト計算・確認」で再計算すると、反映ぶんが反映されます。")
             else:
                 detail = r.json().get("detail", r.text)
                 st.error(f"解釈に失敗しました（{r.status_code}）：{detail}")

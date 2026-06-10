@@ -2,10 +2,13 @@
 NoteAgent — 出勤希望の「日ごと備考(note)」をバッチ解釈（Flash・思考オフ）
 
 コスト対策で **まとめて数回の呼び出し** で処理する（1件ずつ呼ばない）。
-各備考について「出勤可能枠をどう補正するか（new_start/new_end）」を返す。
+各備考を3つに分類する:
+  A: その日の時間補正（new_start/new_end で出勤可能枠を狭める）
+  B: 新しいルール候補（毎週○曜NG等。is_new_type=true → 管理者の承認キューへ）
+  C: どちらでもない（申し送りとして可視化）
 
 入力: [{index, person_id, date, current_start, current_end, note}, ...]
-出力: [{index, interpretable, new_start, new_end, note_summary}, ...]
+出力: [{index, interpretable, new_start, new_end, is_new_type, suggested_type_name, note_summary}, ...]
 """
 
 import json
@@ -25,6 +28,8 @@ class NoteResult(BaseModel):
     interpretable: bool
     new_start: str | None = None   # "HH:MM" or null（変更なし）
     new_end: str | None = None
+    is_new_type: bool = False              # 「仕組みとしてのルール」＝新タイプ候補か
+    suggested_type_name: str | None = None  # 新タイプ名の提案（例: recurring_day_off）
     note_summary: str = ""
 
 

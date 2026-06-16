@@ -265,6 +265,27 @@
 
 ---
 
+## 2026-06-10: T2実装 — 承認→制約化→自動再計算（L2ループ一周が完成）
+
+- **切れていた所**: 承認するとハンドラ関数は登録されるが、各人の原文を変換した
+  **params（材料）が無く**、`run-stored` も `dynamic_constraints` を渡していなかった → 再計算しても効かない。
+- **配線4つ**:
+  1. **ParamsAgent**（Flash・思考オフ・バッチ）: 承認時に occurrence の原文 → params化。
+     生成時の `tested_params`（見本）に形式を固定し、ハンドラが期待する形に一致させる。
+  2. **storage に dynamic_constraints**（`save/get/clear`）。reset-constraintsで併せてクリア。
+  3. **approve_pending** が登録後にparams化→保存。Gemini無し/失敗でも承認は壊さず警告で返す。
+  4. **run-stored** が dynamic_constraints を反映＋ **`POST /solver/preview-rule-effect`** 新設
+     （type除外あり/なしで2回solveしdiff）。⑤画面が承認直後に before/after を自動表示。
+- **UI**: `render_shift_table` を `src/ui/_shift_table.py` に共有util化（④⑤で再利用）。
+  ⑤は session_state でループ最後の差分を保持し、最上部に「🔁このルールで変わった割り当て」を表示。
+- **方針**: `_DYNAMIC_HANDLERS`/dynamic_constraints はインメモリ（再起動で消える）。
+  デモ1セッションは可。永続化はT5(Supabase)。
+- **検証**: 単体5件（dynamic反映で水曜消滅・params化保存・run-stored反映・diff）。全58件緑。
+  実Gemini E2E（`scripts/check_t2_live.py`）: recurring_day_off 承認→params化2件→
+  **p01の水曜(11-04)の昼夜の割当が before/after で消える**ことを確認。
+
+---
+
 ## 今後追記用フォーマット
 
 ```markdown

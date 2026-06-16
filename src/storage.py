@@ -127,6 +127,26 @@ def get_base_headcounts() -> list[dict]:
     return list(_base_headcounts)
 
 
+# ── 動的タイプの制約インスタンス（承認された新typeの「材料」） ───────
+# 承認時、ParamsAgent が各人の原文を params化したものを貯める。
+# 各要素: {"type", "params": {...}, "source": {person_id, date, source_text}}
+# run-stored がこれをソルバーに渡す（②方針・③希望と並ぶ第4の制約源）。
+_dynamic_constraints: list[dict] = []
+
+
+def save_dynamic_constraints(items: list[dict]) -> None:
+    """承認された新typeの制約インスタンスを追記する。"""
+    _dynamic_constraints.extend(items)
+
+
+def get_dynamic_constraints() -> list[dict]:
+    return list(_dynamic_constraints)
+
+
+def clear_dynamic_constraints() -> None:
+    _dynamic_constraints.clear()
+
+
 # ── 備考(note)の解釈結果（✅適用 / ⚠️未反映） ───────────────────────
 # 各要素: {person_id, date, note, applied(bool), summary}
 _note_results: list[dict] = []

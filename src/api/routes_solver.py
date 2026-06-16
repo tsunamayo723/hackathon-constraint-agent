@@ -19,6 +19,7 @@ from src.solver.engine import solve
 from src.storage import (
     get_availability,
     get_base_headcounts,
+    get_dynamic_constraints,
     get_frame,
     get_masters,
     get_policy_constraints,
@@ -150,11 +151,14 @@ def run_solver_stored() -> SolverOutput:
         raise HTTPException(status_code=404, detail="営業情報が未登録です。① セットアップで登録してください。")
 
     constraints = get_base_headcounts() + get_policy_constraints() + get_availability()
+    # 承認済みの新type（dynamic_constraints）も渡す。登録済みハンドラがあれば反映される。
+    dynamic = [{"type": d["type"], "params": d["params"]} for d in get_dynamic_constraints()]
     try:
         spec = SolverInput.model_validate({
             "frame": frame.model_dump(mode="json"),
             "masters": masters.model_dump(mode="json"),
             "constraints": constraints,
+            "dynamic_constraints": dynamic,
         })
     except ValidationError as e:
         raise HTTPException(status_code=422, detail=e.errors())
@@ -170,3 +174,72 @@ def run_solver_stored() -> SolverOutput:
     ]
 
     return solve(spec, pending)
+
+
+def _assignment_key(a) -> tuple:
+    """割当の同一判定キー（誰が・いつ・どこに・何時）。"""
+    return (a.person_id, str(a.date), a.position_id, a.start, a.end)
+
+
+def _fmt_assignment(a) -> dict:
+    return {
+        "person_id": a.person_id, "date": str(a.date),
+        "position_id": a.position_id, "start": a.start, "end": a.end,
+    }
+
+
+@router.post(
+    "/preview-rule-effect",
+    summary="承認したルールの反映効果を before/after で比較する",
+    description=(
+        "指定した type を**除いた状態**と**含めた状態**で2回シフトを計算し、"
+        "その type のせいで変わった割当（消えた/増えた）を差分で返します。\n\n"
+        "承認直後に「このルールでシフトがこう変わった」を見せるための比較用エンドポイント。"
+    ),
+)
+def preview_rule_effect(body: dict = Body(...)):
+    type_name = (body or {}).get("type_name")
+    if not type_name:
+        raise HTTPException(status_code=422, detail="type_name が必要です。")
+
+    masters = get_masters()
+    frame = get_frame()
+    if masters is None or frame is None:
+        raise HTTPException(status_code=404, detail="マスタ／営業情報が未登録です。")
+
+    constraints = get_base_headcounts() + get_policy_constraints() + get_availability()
+    all_dynamic = [{"type": d["type"], "params": d["params"]} for d in get_dynamic_constraints()]
+    without = [d for d in all_dynamic if d["type"] != type_name]
+
+    def _solve(dynamic: list[dict]) -> SolverOutput:
+        spec = SolverInput.model_validate({
+            "frame": frame.model_dump(mode="json"),
+            "masters": masters.model_dump(mode="json"),
+            "constraints": constraints,
+            "dynamic_constraints": dynamic,
+        })
+        return solve(spec)
+
+    try:
+        before = _solve(without)        # このルールを入れない状態
+        after = _solve(all_dynamic)     # このルールも入れた状態
+    except ValidationError as e:
+        raise HTTPException(status_code=422, detail=e.errors())
+
+    before_keys = {_assignment_key(a) for a in before.assignments}
+    after_keys = {_assignment_key(a) for a in after.assignments}
+    removed = [_fmt_assignment(a) for a in before.assignments if _assignment_key(a) not in after_keys]
+    added = [_fmt_assignment(a) for a in after.assignments if _assignment_key(a) not in before_keys]
+
+    return {
+        "type_name": type_name,
+        "before": {
+            "status": before.status,
+            "assignments": [a.model_dump(mode="json") for a in before.assignments],
+        },
+        "after": {
+            "status": after.status,
+            "assignments": [a.model_dump(mode="json") for a in after.assignments],
+        },
+        "diff": {"removed": removed, "added": added},
+    }

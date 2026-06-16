@@ -22,6 +22,7 @@ from src.storage import (
     get_pending_request,
     list_pending_requests,
     mark_shift_for_recalc,
+    save_dynamic_constraints,
     update_pending_request,
 )
 
@@ -132,6 +133,57 @@ def generate_handler(req_id: str):
     }
 
 
+def _paramize_and_store(req: PendingTypeRequest) -> int:
+    """承認された新typeの各原文を params化し、dynamic_constraints として保存する。
+
+    ハンドラ生成時の見本（tested_params）と同じ形式に揃えることで、
+    登録済みハンドラ handle(params, ctx) が期待する params の形に一致させる。
+    保存した制約インスタンスの件数を返す。
+    """
+    from src.agents import ParamsAgent
+
+    occurrences = [
+        {
+            "index": i,
+            "person_id": o.get("person_id"),
+            "date": o.get("date"),
+            "source_text": o.get("source_text", ""),
+        }
+        for i, o in enumerate(req.occurrences)
+    ]
+
+    results = ParamsAgent().convert(
+        type_name=req.suggested_type_name,
+        param_schema_json=json.dumps(req.suggested_schema or {}, ensure_ascii=False),
+        example_params_json=json.dumps(req.tested_params or {}, ensure_ascii=False),
+        occurrences=occurrences,
+    )
+    by_index = {r.index: r for r in results}
+
+    items: list[dict] = []
+    for occ in occurrences:
+        r = by_index.get(occ["index"])
+        if r is None:
+            continue
+        try:
+            params = json.loads(r.params_json)
+        except (json.JSONDecodeError, TypeError):
+            continue
+        if not isinstance(params, dict):
+            continue
+        items.append({
+            "type": req.suggested_type_name,
+            "params": params,
+            "source": {
+                "person_id": occ["person_id"], "date": occ["date"],
+                "source_text": occ["source_text"],
+            },
+        })
+
+    save_dynamic_constraints(items)
+    return len(items)
+
+
 @router.post(
     "/pending-types/{req_id}/approve",
     summary="承認: 生成ハンドラをソルバーに登録し、影響シフトを再計算キューへ",
@@ -166,6 +218,19 @@ def approve_pending(req_id: str, reviewer_id: str = "admin", comment: str = ""):
                 detail=f"承認しましたがハンドラ登録に失敗しました: {exc}",
             )
 
+    # 各人の原文を params化して制約として保存（＝ハンドラに渡す「材料」を用意）
+    paramized = 0
+    params_warning = None
+    if registered and req.occurrences:
+        if not llm.is_available():
+            params_warning = "Gemini未設定のため原文のparams化をスキップしました（ハンドラは登録済み）。"
+        else:
+            try:
+                paramized = _paramize_and_store(req)
+            except Exception as exc:
+                logger.exception("params化に失敗")
+                params_warning = f"ハンドラは登録しましたが、原文のparams化に失敗しました: {exc}"
+
     req.status = "approved"
     req.reviewed_at = datetime.now()
     req.reviewer_id = reviewer_id
@@ -179,12 +244,16 @@ def approve_pending(req_id: str, reviewer_id: str = "admin", comment: str = ""):
             reason=f"未知タイプ '{req.suggested_type_name}' が承認されたため",
         )
 
-    return {
+    result = {
         "結果": "承認しました",
         "タイプ名": req.suggested_type_name,
         "ハンドラ登録": "完了（ソルバーで使えます）" if registered else "スキップ（生成コードが無い）",
+        "反映した要望(params)件数": paramized,
         "再計算キューに入れたシフト数": len(req.affected_shift_ids),
     }
+    if params_warning:
+        result["警告"] = params_warning
+    return result
 
 
 @router.post(

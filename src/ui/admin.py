@@ -13,6 +13,8 @@
 import requests
 import streamlit as st
 
+from _shift_table import render_shift_table
+
 API_URL = "http://localhost:8001"
 
 # app.py から読み込まれた場合は設定済みなので無視
@@ -34,6 +36,74 @@ def _get(path: str, **params):
 
 def _post(path: str, **params):
     return requests.post(f"{API_URL}{path}", params=params, timeout=120)
+
+
+def _fetch_masters():
+    try:
+        r = _get("/setup/masters")
+        return r.json() if r.status_code == 200 else None
+    except requests.exceptions.ConnectionError:
+        return None
+
+
+def _desc(a: dict, masters) -> str:
+    """割当1件を『名前 日付 ポジション 時間』の文字列にする。"""
+    pn = {p["id"]: p["name"] for p in masters["persons"]} if masters else {}
+    posn = {p["id"]: p["name"] for p in masters["positions"]} if masters else {}
+    who = pn.get(a["person_id"], a["person_id"])
+    pos = posn.get(a["position_id"], a["position_id"])
+    return f"{who} ・ {a['date']} ・ {pos} {a['start']}-{a['end']}"
+
+
+def _render_approval_result(data: dict, masters) -> None:
+    """承認直後の「このルールでシフトがこう変わった」を before/after で見せる。"""
+    approve = data.get("approve") or {}
+    diff_data = data.get("diff")
+
+    with st.container(border=True):
+        st.subheader(f"✅ 承認しました：`{approve.get('タイプ名', '')}`")
+        c1, c2 = st.columns(2)
+        c1.metric("ハンドラ登録", approve.get("ハンドラ登録", "—"))
+        c2.metric("反映した要望（件）", approve.get("反映した要望(params)件数", "—"))
+        if approve.get("警告"):
+            st.warning(approve["警告"])
+
+        if diff_data is None:
+            st.info("反映効果の比較を取得できませんでした。「④ シフト計算・確認」で再計算してご確認ください。")
+        else:
+            removed = diff_data["diff"]["removed"]
+            added = diff_data["diff"]["added"]
+            st.markdown("#### 🔁 このルールで変わった割り当て")
+            if not removed and not added:
+                st.info("このルールによる割り当ての変化はありませんでした（もともと条件を満たしていた）。")
+            else:
+                if removed:
+                    st.markdown("**❌ 消えた割り当て（このルールで入れられなくなった）**")
+                    for a in removed:
+                        st.markdown(f"- {_desc(a, masters)}")
+                if added:
+                    st.markdown("**➕ 増えた割り当て**")
+                    for a in added:
+                        st.markdown(f"- {_desc(a, masters)}")
+
+            if masters is not None:
+                t_after, t_before = st.tabs(["反映後（after）", "反映前（before）"])
+                with t_after:
+                    render_shift_table(diff_data["after"]["assignments"], masters)
+                with t_before:
+                    render_shift_table(diff_data["before"]["assignments"], masters)
+
+        st.caption("「④ シフト計算・確認」で再計算すると、確定版（全要望反映）になります。")
+        if st.button("閉じる", key="dismiss_approval"):
+            del st.session_state["last_approval"]
+            st.rerun()
+
+
+# ── 直前の承認結果（before/after差分）を最上部に表示 ──────────────────
+_masters = _fetch_masters()
+if "last_approval" in st.session_state:
+    _render_approval_result(st.session_state["last_approval"], _masters)
+    st.divider()
 
 
 # ── キュー取得 ──────────────────────────────────────────────────────
@@ -175,12 +245,27 @@ for req in queue:
             with b1:
                 if st.button("✅ 承認", key=f"ap_{req_id}", type="primary"):
                     try:
-                        r = _post(f"/admin/pending-types/{req_id}/approve", comment=comment)
-                        if r.status_code == 200:
-                            st.success("承認しました。")
-                            st.rerun()
-                        else:
-                            st.error(f"承認に失敗（{r.status_code}）：{r.text}")
+                        with st.spinner("承認 → 要望をparams化 → 反映効果を計算中..."):
+                            r = _post(f"/admin/pending-types/{req_id}/approve", comment=comment)
+                            if r.status_code == 200:
+                                approve_body = r.json()
+                                diff_data = None
+                                try:
+                                    pr = requests.post(
+                                        f"{API_URL}/solver/preview-rule-effect",
+                                        json={"type_name": req["suggested_type_name"]},
+                                        timeout=120,
+                                    )
+                                    if pr.status_code == 200:
+                                        diff_data = pr.json()
+                                except Exception:
+                                    diff_data = None
+                                st.session_state["last_approval"] = {
+                                    "approve": approve_body, "diff": diff_data,
+                                }
+                                st.rerun()
+                            else:
+                                st.error(f"承認に失敗（{r.status_code}）：{r.text}")
                     except Exception as exc:
                         st.error(f"承認に失敗しました: {exc}")
             with b2:

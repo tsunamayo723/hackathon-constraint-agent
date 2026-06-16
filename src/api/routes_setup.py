@@ -22,6 +22,7 @@ from src.models.constraints import KNOWN_TYPES, AvailabilityParams, HeadcountPar
 from src.storage import (
     add_pending_request,
     clear_availability,
+    clear_dynamic_constraints,
     clear_note_results,
     clear_policy_constraints,
     find_pending_by_type,
@@ -257,6 +258,7 @@ def reset_constraints():
     clear_policy_constraints()
     clear_availability()
     clear_note_results()
+    clear_dynamic_constraints()
     return {"結果": "方針と出勤希望をクリアしました"}
 
 

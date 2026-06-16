@@ -231,6 +231,9 @@ def preview_rule_effect(body: dict = Body(...)):
     removed = [_fmt_assignment(a) for a in before.assignments if _assignment_key(a) not in after_keys]
     added = [_fmt_assignment(a) for a in after.assignments if _assignment_key(a) not in before_keys]
 
+    # 生成ハンドラの実行時エラー（このtypeのコードにバグがあれば handler_error:<type> が出る）
+    handler_failed = any(w.type == f"handler_error:{type_name}" for w in after.warnings)
+
     return {
         "type_name": type_name,
         "before": {
@@ -242,4 +245,5 @@ def preview_rule_effect(body: dict = Body(...)):
             "assignments": [a.model_dump(mode="json") for a in after.assignments],
         },
         "diff": {"removed": removed, "added": added},
+        "handler_failed": handler_failed,
     }

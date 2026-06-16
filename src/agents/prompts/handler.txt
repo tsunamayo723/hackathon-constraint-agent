@@ -26,6 +26,15 @@ def handle(params, ctx):
 - Soft（できれば）: 罰金変数 z を作り ctx.add_penalty(weight, z)。weightは必ず50〜1000。
 - 「なるべく」「できれば」はSoft、「絶対」「不可」はHard。
 
+[❌ 絶対に避けるバグ（重要）]
+- **CP-SATの変数・リテラル（ctx.x / ctx.present / ctx.work_day の要素や、それらを使った式）を
+  Python の if / and / or / not / bool() で評価しないこと。**
+  → 実行時に「Evaluating a Literal as a Boolean value is not supported」で落ちます。
+- if文の条件に使ってよいのは **Pythonのネイティブ値だけ**（日付・曜日 day.weekday()・ID文字列・整数など）。
+  例（OK）: `if day.weekday() == 2:` `if pid == params["person_id"]:`
+  例（NG）: `if ctx.work_day[(pid,di)]:` `if ctx.present[(pid,di,si)] == 1 and ...:`
+- 変数どうしの関係・条件は必ず `ctx.model.Add(...)` で表現する（Pythonのifで分岐しない）。
+
 [時刻の変換]
 - "HH:MM"を分にしたいときは: hh, mm = s.split(":"); minutes = int(hh)*60+int(mm)
 

@@ -7,6 +7,7 @@ OR-Tools 本体（CpModel / CpSolver）はここでだけ触る。
 個々の制約の翻訳はハンドラに任せ、ここは「土台作りと求解」に専念する。
 """
 
+import logging
 import time
 from datetime import date
 
@@ -27,6 +28,8 @@ from src.models.solver_io import (
 )
 from .context import SolverContext
 from .slots import Slot, build_day_slots, date_range
+
+logger = logging.getLogger("uvicorn.error")
 from .validator import validate
 
 # 求解の打ち切り時間（秒）。デモ規模なら十分。
@@ -76,7 +79,13 @@ def solve(
             # 未承認/未登録の新type → 黙って捨てず警告で明示
             warnings.append(SolverWarning(type=f"unregistered:{dtype}"))
             continue
-        handler(dc.get("params", {}), ctx)
+        try:
+            handler(dc.get("params", {}), ctx)
+        except Exception as exc:
+            # AI生成ハンドラの実行時バグでソルバー全体を落とさない。
+            # その制約だけ諦め、警告で正直に可視化する（→ 再生成を促す）。
+            logger.warning("動的ハンドラ '%s' の実行に失敗: %s", dtype, exc)
+            warnings.append(SolverWarning(type=f"handler_error:{dtype}"))
 
     # availability は全件出そろってから適用（枠外コマを0に固定）
     _apply_availability(ctx)

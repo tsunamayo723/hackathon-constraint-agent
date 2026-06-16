@@ -70,6 +70,13 @@ def _render_approval_result(data: dict, masters) -> None:
 
         if diff_data is None:
             st.info("反映効果の比較を取得できませんでした。「④ シフト計算・確認」で再計算してご確認ください。")
+        elif diff_data.get("handler_failed"):
+            st.error(
+                "⚠️ AIが生成したコードに**実行時エラー**があり、このルールは適用できませんでした。\n\n"
+                "（ハンドラ登録と要望のparams化は済んでいますが、計算時にコードが落ちます）  \n"
+                "下のカードで対象タイプの「🤖 AIにハンドラを生成させる」をもう一度押して、"
+                "コードを作り直してから再度承認してください。"
+            )
         else:
             removed = diff_data["diff"]["removed"]
             added = diff_data["diff"]["added"]

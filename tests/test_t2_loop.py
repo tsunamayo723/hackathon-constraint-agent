@@ -107,6 +107,25 @@ def test_without_dynamic_constraint_keeps_wednesday():
     assert len(wed) == 1     # ルールが無ければ水曜も入る
 
 
+# CP-SATの変数を Python の if で評価する（よくあるAI生成バグ）→ 実行時エラー
+BUGGY_HANDLER = """
+def handle(params, ctx):
+    pid = params.get("person_id")
+    for di, day in enumerate(ctx.days):
+        if ctx.work_day[(pid, di)]:   # ← Literal を bool 評価 → NotImplementedError
+            ctx.model.Add(ctx.work_day[(pid, di)] == 0)
+"""
+
+
+def test_buggy_dynamic_handler_does_not_crash_solver():
+    """生成ハンドラのバグでソルバー全体を落とさず、警告で可視化する。"""
+    register_dynamic_handler("buggy_rule", BUGGY_HANDLER)
+    out = solve(_spec([{"type": "buggy_rule", "params": {"person_id": "p1"}}]))
+
+    assert out.status == "solved"   # 落ちずに解ける
+    assert any(w.type == "handler_error:buggy_rule" for w in out.warnings)
+
+
 # ── 2. _paramize_and_store（ParamsAgentモック） ───────────────────────
 
 def test_paramize_and_store_saves_dynamic_constraints(monkeypatch):

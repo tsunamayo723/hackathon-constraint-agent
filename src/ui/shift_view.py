@@ -227,6 +227,7 @@ if st.button("🧮 シフトを計算する", type="primary"):
     warns = out.get("warnings", [])
     unhandled = [w["type"].split(":", 1)[1] for w in warns if w.get("type", "").startswith("unhandled:")]
     unregistered = [w["type"].split(":", 1)[1] for w in warns if w.get("type", "").startswith("unregistered:")]
+    handler_errors = [w["type"].split(":", 1)[1] for w in warns if w.get("type", "").startswith("handler_error:")]
     if unhandled:
         st.caption(
             f"※ 未反映（既知タイプだがソルバーのハンドラが未実装）: {', '.join(set(unhandled))}"
@@ -235,4 +236,10 @@ if st.button("🧮 シフトを計算する", type="primary"):
         st.caption(
             f"※ 未反映（未承認の新タイプ）: {', '.join(set(unregistered))} "
             "→「⑤ 管理者承認」で承認すると次回計算から反映されます。"
+        )
+    if handler_errors:
+        st.warning(
+            f"⚠️ 生成ハンドラの実行時エラーで未反映: {', '.join(set(handler_errors))} "
+            "→「⑤ 管理者承認」で該当タイプのハンドラを**作り直して再承認**してください"
+            "（AIが書いたコードにバグがありました）。"
         )

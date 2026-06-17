@@ -21,6 +21,8 @@ from .base import GeminiAgent
 
 
 class GeneratedRecipe(BaseModel):
+    expressible: bool = True      # 現在の操作・選択子で表現できるか（分かったフリをしない）
+    reject_category: str = ""     # 表現できない理由カテゴリ（expressible=false時）
     recipe_template_json: str     # 操作＋選択子（JSON文字列）
     example_recipe_json: str      # 完成例（JSON文字列）
     fill_fields: list[str]        # per-occurrenceで埋める選択子

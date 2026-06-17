@@ -49,6 +49,10 @@ class PendingTypeRequest(BaseModel):
     suggested_recipe: Optional[dict] = None       # レシピ（操作×選択子）テンプレ。これがあればレシピ方式
     suggested_schema: Optional[dict] = None       # 新typeのJSONスキーマ（旧Python方式）
     suggested_handler_code: Optional[str] = None  # ハンドラ関数のPythonコード（旧Python方式）
+
+    # データ実現可能性（「分かったフリをしない」）
+    expressible: bool = True                      # 現在の部品（操作×選択子）で表現できるか
+    reject_category: Optional[str] = None         # 表現できない理由カテゴリ（expressible=false時）
     tested_params: Optional[dict] = None          # テストに使った例params（何で試したか）
     test_results: Optional[TestResult] = None     # サンドボックスでのテスト結果
     confidence: float = Field(default=0.0, ge=0.0, le=1.0)

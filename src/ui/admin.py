@@ -140,6 +140,15 @@ st.markdown(f"#### 承認待ち / 表示中：{len(queue)} 件")
 
 _STATUS_LABEL = {"pending": "⏳ 承認待ち", "approved": "✅ 承認済み", "rejected": "❌ 却下済み"}
 
+# 「表現できない」理由カテゴリ → 日本語ラベル（正直な拒否の表示用）
+_REJECT_LABELS = {
+    "negotiation_dependent": "他者の希望に依存（交渉が必要）",
+    "history_dependent": "過去の実績データが必要",
+    "missing_data": "手持ちに無いデータが必要",
+    "subjective": "主観的で数値化できない",
+    "advanced_logic": "高度な条件ロジックが必要（現在の部品で表現不可）",
+}
+
 
 # ── 1件ずつカード表示 ────────────────────────────────────────────────
 for req in queue:
@@ -155,6 +164,32 @@ for req in queue:
         )
         if req.get("summary"):
             st.markdown(f"**要約：{req['summary']}**")
+
+        # ── 表現できない＝AIが正直に拒否（分かったフリをしない・核の見せ場） ──
+        if req.get("expressible") is False:
+            cat = req.get("reject_category") or ""
+            st.error(f"❌ このルールは現在の仕組みでは**表現できません**（理由：{_REJECT_LABELS.get(cat, '不明')}）")
+            tr = req.get("test_results")
+            if tr and tr.get("detail"):
+                st.caption(f"AIの説明：{tr['detail']}")
+            with st.expander("💬 元の発言を見る"):
+                for s in req["source_texts"]:
+                    st.markdown(f"- 「{s}」")
+            st.caption("AIは“分かったフリ”をせず、表現できないことを正直に申告します。手作業での対応をご検討ください。")
+            if req["status"] == "pending":
+                if st.button("🗂️ 却下として記録する", key=f"rj_inexp_{req_id}"):
+                    try:
+                        r = _post(f"/admin/pending-types/{req_id}/reject", comment=f"表現不可: {cat}")
+                        if r.status_code == 200:
+                            st.success("却下として記録しました。")
+                            st.rerun()
+                        else:
+                            st.error(f"記録に失敗（{r.status_code}）：{r.text}")
+                    except Exception as exc:
+                        st.error(f"記録に失敗しました: {exc}")
+            else:
+                st.caption(f"処理済み（{_STATUS_LABEL.get(req['status'], req['status'])}）")
+            continue
 
         # 前面の指標（自信度・テスト・状態）
         c1, c2, c3 = st.columns(3)

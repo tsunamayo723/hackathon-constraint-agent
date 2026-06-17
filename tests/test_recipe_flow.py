@@ -166,6 +166,38 @@ def test_generate_endpoint_uses_recipe(monkeypatch):
     req = storage.get_pending_request("req_g")
     assert req.suggested_recipe["operation"] == "forbid"
     assert req.test_results.passed
+    assert req.expressible is True
+
+
+def test_generate_honestly_rejects_inexpressible(monkeypatch):
+    """表現できないルールはレシピを作らず、理由つきで正直に拒否する。"""
+    monkeypatch.setattr(llm, "is_available", lambda: True)
+
+    def fake_generate(self, req):
+        return GeneratedRecipe(
+            expressible=False, reject_category="negotiation_dependent",
+            recipe_template_json="", example_recipe_json="", fill_fields=[],
+            explanation="他に休みたい人がいるかどうかに依存するため、割当変数だけでは表せません。",
+            confidence=0.2, concerns=["他者の希望に依存"],
+        )
+
+    monkeypatch.setattr(RecipeAgent, "generate", fake_generate)
+    storage.add_pending_request(PendingTypeRequest(
+        id="req_x", suggested_type_name="conditional_on_others",
+        source_texts=["他に休みたい人がいれば私は出ます"], created_at=datetime.now(),
+    ))
+
+    r = client.post("/admin/pending-types/req_x/generate")
+    assert r.status_code == 200
+    body = r.json()
+    assert body["表現可能"] is False
+    assert body["理由"] == "他者の希望に依存（交渉が必要）"
+
+    req = storage.get_pending_request("req_x")
+    assert req.expressible is False
+    assert req.reject_category == "negotiation_dependent"
+    assert req.suggested_recipe is None
+    assert req.test_results.passed is False
 
 
 # ── 承認→埋め込み→run-stored（真のL2一周・ParamsAgentモック） ───────

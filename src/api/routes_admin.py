@@ -28,6 +28,19 @@ router = APIRouter(prefix="/admin", tags=["管理者承認"])
 
 logger = logging.getLogger("uvicorn.error")
 
+# 「表現できない」理由カテゴリ → 日本語ラベル（正直な拒否の表示用）
+REJECT_LABELS = {
+    "negotiation_dependent": "他者の希望に依存（交渉が必要）",
+    "history_dependent": "過去の実績データが必要",
+    "missing_data": "手持ちに無いデータが必要",
+    "subjective": "主観的で数値化できない",
+    "advanced_logic": "高度な条件ロジックが必要（現在の部品で表現不可）",
+}
+
+
+def reject_label(category: Optional[str]) -> str:
+    return REJECT_LABELS.get(category or "", "表現できない理由は不明")
+
 
 @router.get(
     "/usage",
@@ -98,7 +111,32 @@ def generate_handler(req_id: str):
         logger.exception("レシピ生成に失敗")
         raise HTTPException(status_code=502, detail=f"レシピ生成に失敗しました: {exc}")
 
-    # ② 例レシピを取り出して固定インタプリタで検証（execしない）
+    req.confidence = max(0.0, min(1.0, gen.confidence))
+    req.concerns = gen.concerns
+
+    # ②a 表現できない＝正直に拒否（分かったフリをしない）。レシピは作らない。
+    if not gen.expressible:
+        label = reject_label(gen.reject_category)
+        req.expressible = False
+        req.reject_category = gen.reject_category or None
+        req.suggested_recipe = None
+        req.tested_params = None
+        req.test_results = TestResult(
+            passed=False, total=1, passed_count=0,
+            failed_cases=[f"表現できません（{label}）"],
+            detail=gen.explanation,
+        )
+        update_pending_request(req)
+        return {
+            "結果": "表現できませんでした",
+            "タイプ名": req.suggested_type_name,
+            "表現可能": False,
+            "理由": label,
+            "説明": gen.explanation,
+            "自信度": req.confidence,
+        }
+
+    # ②b 例レシピを取り出して固定インタプリタで検証（execしない）
     def _loads(s: str) -> dict:
         try:
             v = json.loads(s) if s else {}
@@ -111,10 +149,10 @@ def generate_handler(req_id: str):
     ok, message = validate_recipe(example_recipe)
 
     # ③ 生成結果と検証結果をリクエストに格納
+    req.expressible = True
+    req.reject_category = None
     req.suggested_recipe = recipe_template
     req.tested_params = example_recipe
-    req.confidence = max(0.0, min(1.0, gen.confidence))
-    req.concerns = gen.concerns
     req.test_results = TestResult(
         passed=ok,
         total=1,
@@ -127,6 +165,7 @@ def generate_handler(req_id: str):
     return {
         "結果": "設計・検証完了",
         "タイプ名": req.suggested_type_name,
+        "表現可能": True,
         "説明": gen.explanation,
         "テスト": "合格" if ok else f"不合格（{message}）",
         "自信度": req.confidence,

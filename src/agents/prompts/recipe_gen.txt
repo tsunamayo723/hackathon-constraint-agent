@@ -27,7 +27,20 @@ $source_texts
 要約: $summary
 AIの解釈: $ai_assessment
 
+[まず判定: 表現できるか（分かったフリをしない）]
+このルールが上記の操作・選択子＋手持ちデータ（人/役職/スキル/ポジション/日付/曜日/時間帯/出勤可否）
+だけで表現できるかを判定してください。**できない場合は無理に当てはめず**、expressible=false にして
+reject_category を次から1つ選び、explanation に理由を書いてください:
+- "negotiation_dependent" … 他者の希望・人数に依存（例「他に休みたい人がいれば私は出ます」）
+- "history_dependent"     … 過去月の実績が必要（例「先月と同じシフトにして」）
+- "missing_data"          … 手持ちに無いデータが必要（例「車で来られる日だけ夜遅くOK」）
+- "subjective"            … 主観的で数値化できない（例「雰囲気の良いシフトに」）
+- "advanced_logic"        … 操作・選択子の組み合わせでは表せない高度な条件（例「Aさんが入る日だけBさんも」）
+表現できる場合は expressible=true、reject_category="" とし、レシピを設計してください。
+
 [出力してほしいもの]
+- expressible: 上記の部品で表現できるか（true/false）
+- reject_category: 表現できない場合の理由カテゴリ（できる場合は ""）
 - recipe_template_json: このtypeの操作と固定の選択子をJSON文字列で。
   各人ごとに変わる値（person_id や 具体的な weekday/date など）は省略 or 代表値でよい。
   例: '{"operation":"forbid","who":"person","when":"weekday","band":"all_day"}'

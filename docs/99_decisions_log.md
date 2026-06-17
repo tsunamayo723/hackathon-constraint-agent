@@ -328,6 +328,22 @@
 
 ---
 
+## 2026-06-17: 実Gemini検証＋「正直な拒否」（データ実現可能性チェック）
+
+- **実Gemini検証（de-risk成功）**: `scripts/check_recipe_live.py`。デモ3typeとも
+  RecipeAgent(Pro)が**構造的に正しいレシピ**を生成（confidence 1.0）。recurring_day_off は
+  承認→反映まで完全動作。C-1バグはレシピ方式で構造的に消滅と実機確認。Gemini 5call ¥13。
+- **検証バグ修正**: validate_recipe が固定窓（11月・11:00-22:00）のため、例レシピが
+  12月の日付や22:00以降を指すと偽陰性。→ レシピの選択子に合わせて期間・営業時間を組むよう修正。
+- **正直な拒否（実装）**: RecipeAgentに `expressible`/`reject_category` を出させ、表現できない
+  ルールは**レシピを作らず**理由つきで拒否（negotiation_dependent/history_dependent/missing_data/
+  subjective/advanced_logic）。⑤画面で「❌表現できません（理由）」＋却下導線。核「分かったフリをしない」直結。
+- **チャット入力整備の置き場**: バッチCSVは本人不在のため、対話はT9（提出者UI・Vite+React）と
+  セットで実装が自然。**モデルはFlash**（ユーザー指示・ソルバー生成ほど高度不要）。
+- 全76テスト緑（正直な拒否のテスト追加）。
+
+---
+
 ## 今後追記用フォーマット
 
 ```markdown

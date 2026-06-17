@@ -87,10 +87,14 @@ def _clip_weight(w: int) -> int:
 
 
 def validate_recipe(recipe: dict) -> tuple[bool, str]:
-    """レシピが解釈可能かを確かめる（パース＋小シナリオへ適用）。
+    """レシピが解釈可能かを確かめる（パース＋検証シナリオへ適用）。
 
     旧Python方式のサンドボックス（subprocess＋exec）の代わり。レシピは固定インタプリタが
     処理するので**任意コード実行が無く**、プロセス内で安全に検証できる。
+
+    検証シナリオ（期間・営業時間）は**レシピの選択子に合わせて組む**。
+    例レシピが12月の日付や22時以降の時間帯を指していても確実に当たるようにし、
+    「固定窓に当たらないだけ」の偽陰性を防ぐ。
     返り値: (合格か, メッセージ)
     """
     try:
@@ -98,15 +102,38 @@ def validate_recipe(recipe: dict) -> tuple[bool, str]:
     except Exception as exc:
         return False, f"レシピの形式エラー: {exc}"
 
-    # 検証用の小さな文脈（3名×1週間×ホール）
     from datetime import date as _date
+    from datetime import timedelta
 
     from ortools.sat.python import cp_model
 
     from src.models.master import Masters
     from src.solver.engine import _build_variables
-    from src.solver.slots import build_day_slots, date_range
+    from src.solver.slots import build_day_slots, date_range, hhmm_to_min, min_to_hhmm
 
+    # 期間: レシピが日付を指していればそれを含む期間に。最低7日（全曜日を含む）。
+    dates = [d for d in (r.date, r.date_start, r.date_end) if d is not None]
+    if dates:
+        start, end = min(dates), max(dates)
+        if (end - start).days < 6:
+            end = start + timedelta(days=6)
+    else:
+        start, end = _date(2026, 11, 2), _date(2026, 11, 8)
+
+    # 営業時間: レシピの時間帯を必ず含むよう開閉を広げる（例: 22:00-29:00 の遅番も当たるように）。
+    open_min, close_min = 11 * 60, 22 * 60
+    for t in (r.time_start, r.time_end):
+        if not t:
+            continue
+        try:
+            m = hhmm_to_min(t)
+        except Exception:
+            continue
+        open_min, close_min = min(open_min, m), max(close_min, m)
+    if close_min <= open_min:
+        close_min = open_min + 60
+
+    # 人は p1〜p3（プロンプトの例の規約に合わせる）。role/skillも一通り用意。
     masters = Masters.model_validate({
         "persons": [
             {"id": "p1", "name": "A", "role_id": "r_lead", "skill_ids": ["sk_bar"]},
@@ -119,8 +146,8 @@ def validate_recipe(recipe: dict) -> tuple[bool, str]:
     })
     ctx = SolverContext(
         model=cp_model.CpModel(),
-        days=date_range(_date(2026, 11, 2), _date(2026, 11, 8)),
-        slots=build_day_slots("11:00", "22:00", 60),
+        days=date_range(start, end),
+        slots=build_day_slots(min_to_hhmm(open_min), min_to_hhmm(close_min), 60),
         masters=masters,
     )
     _build_variables(ctx)

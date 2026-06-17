@@ -97,6 +97,24 @@ def test_validate_recipe_generates_nothing():
     assert not ok
 
 
+def test_validate_recipe_adapts_window_to_late_band():
+    # 22:00以降の遅番（営業終了後の時刻）でも検証シナリオを合わせて合格にする
+    late = {"operation": "limit_count", "who": "person", "person_id": "p1",
+            "when": "always", "band": "window", "time_start": "22:00", "time_end": "29:00",
+            "where": "any", "max": 3, "period": "month"}
+    ok, _ = validate_recipe(late)
+    assert ok
+
+
+def test_validate_recipe_adapts_period_to_daterange():
+    # 検証シナリオ既定（11月）の外（12月）の日付範囲でも合格にする
+    exam = {"operation": "penalize", "who": "person", "person_id": "p1",
+            "when": "date_range", "date_start": "2026-12-10", "date_end": "2026-12-20",
+            "band": "all_day", "where": "any", "weight": 500}
+    ok, _ = validate_recipe(exam)
+    assert ok
+
+
 # ── _fill_recipes_and_store ─────────────────────────────────────────
 
 def test_fill_recipes_overrides_person_id(monkeypatch):

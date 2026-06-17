@@ -45,9 +45,10 @@ class PendingTypeRequest(BaseModel):
     ai_assessment: Optional[str] = None  # AIの見解（なぜ未知か／どう解釈したか）
     review_points: list[str] = []        # 管理者に確認してほしい点
 
-    # Gemini Pro が生成した内容
-    suggested_schema: Optional[dict] = None       # 新typeのJSONスキーマ
-    suggested_handler_code: Optional[str] = None  # ハンドラ関数のPythonコード
+    # Gemini が生成した内容
+    suggested_recipe: Optional[dict] = None       # レシピ（操作×選択子）テンプレ。これがあればレシピ方式
+    suggested_schema: Optional[dict] = None       # 新typeのJSONスキーマ（旧Python方式）
+    suggested_handler_code: Optional[str] = None  # ハンドラ関数のPythonコード（旧Python方式）
     tested_params: Optional[dict] = None          # テストに使った例params（何で試したか）
     test_results: Optional[TestResult] = None     # サンドボックスでのテスト結果
     confidence: float = Field(default=0.0, ge=0.0, le=1.0)

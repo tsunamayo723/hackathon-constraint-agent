@@ -311,6 +311,23 @@
 
 ---
 
+## 2026-06-17: 生成フローをレシピ方式に切替（exec廃止・C-1を構造的に根絶）
+
+- **/generate**: HandlerAgent(Python生成)→**RecipeAgent(Pro・レシピ設計)**に変更。
+  検証は subprocess sandbox(exec)→**`validate_recipe`（プロセス内・小シナリオに当てる）**へ。
+  任意コード実行が消え、安全性・速度・安定性が向上。
+- **/approve**: `_fill_recipes_and_store`（ParamsAgent・Flash）が各人の原文からレシピを埋め、
+  本人IDはoccurrenceで確実に上書き。dynamic_constraintsに`{type, params:<完成レシピ>}`で保存。
+- **engine**: dynamic_constraintsのparamsが`operation`付きなら`apply_recipe`で適用（execしない）。
+  旧Python方式（get_handler）も後方互換で残す。`PendingTypeRequest.suggested_recipe`を追加。
+- **admin.py**: 「生成コード」表示→「レシピ（操作×選択子）」表示に対応。ボタン文言も設計/検証に。
+- **検証**: 全73テスト緑。新規`test_recipe_flow.py`7件（engine適用・validate合否・
+  埋め込みで本人ID上書き・/generateレシピ方式・**承認→埋め込み→run-storedで水曜消滅＆確定版**）。
+  ＝Gemini無し（エージェントモック）で真のL2一周を再現。
+- 残: チャット入力整備（意味の取り違え）／データ実現可能性チェック（正直な拒否・理由分類）／T9主役UI。
+
+---
+
 ## 今後追記用フォーマット
 
 ```markdown

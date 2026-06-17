@@ -13,11 +13,9 @@ from typing import Optional
 from fastapi import APIRouter, HTTPException, Query
 
 from src import llm
-from src.agents import HandlerAgent
 from src.handlers import register_dynamic_handler
 from src.models import PendingTypeRequest
 from src.models.admin_queue import TestResult
-from src.sandbox import run_handler_test
 from src.storage import (
     get_pending_request,
     list_pending_requests,
@@ -72,15 +70,18 @@ def get_pending(req_id: str) -> PendingTypeRequest:
 
 @router.post(
     "/pending-types/{req_id}/generate",
-    summary="AIにハンドラを生成させてテストする（L2フローの主役）",
+    summary="AIにレシピ（操作×選択子）を設計させて検証する（L2フローの主役）",
     description=(
         "未知タイプに対し、Gemini Pro が\n"
-        "- paramsスキーマ / ハンドラ関数コード / 例params / 自信度 / 懸念点\n"
-        "を生成し、サンドボックス（別プロセス＋タイムアウト）でテストします。\n\n"
-        "結果（生成コード・テスト合否）はこのリクエストに格納され、承認画面で確認できます。"
+        "- レシピ（操作＋選択子）/ 例レシピ / 自信度 / 懸念点\n"
+        "を設計し、**固定インタプリタに当ててプロセス内で検証**します（任意コード実行なし＝安全）。\n\n"
+        "結果（レシピ・検証合否）はこのリクエストに格納され、承認画面で確認できます。"
     ),
 )
 def generate_handler(req_id: str):
+    from src.agents import RecipeAgent
+    from src.solver.recipe import validate_recipe
+
     req = get_pending_request(req_id)
     if not req:
         raise HTTPException(status_code=404, detail=f"見つかりません: {req_id}")
@@ -90,46 +91,48 @@ def generate_handler(req_id: str):
             detail="Gemini未設定のため生成できません（.env の GEMINI_API_KEY を設定してください）。",
         )
 
-    # ① Pro でハンドラ一式を生成
+    # ① Pro でレシピ（操作×選択子）を設計
     try:
-        gen = HandlerAgent().generate(req)
+        gen = RecipeAgent().generate(req)
     except Exception as exc:
-        logger.exception("ハンドラ生成に失敗")
-        raise HTTPException(status_code=502, detail=f"ハンドラ生成に失敗しました: {exc}")
+        logger.exception("レシピ生成に失敗")
+        raise HTTPException(status_code=502, detail=f"レシピ生成に失敗しました: {exc}")
 
-    # ② 例paramsを取り出してサンドボックスでテスト
-    try:
-        example_params = json.loads(gen.example_params_json) if gen.example_params_json else {}
-    except json.JSONDecodeError:
-        example_params = {}
-    test = run_handler_test(gen.handler_code, example_params)
+    # ② 例レシピを取り出して固定インタプリタで検証（execしない）
+    def _loads(s: str) -> dict:
+        try:
+            v = json.loads(s) if s else {}
+            return v if isinstance(v, dict) else {}
+        except json.JSONDecodeError:
+            return {}
 
-    # ③ 生成結果とテスト結果をリクエストに格納
-    req.suggested_handler_code = gen.handler_code
-    try:
-        req.suggested_schema = json.loads(gen.param_schema_json) if gen.param_schema_json else None
-    except json.JSONDecodeError:
-        req.suggested_schema = {"raw": gen.param_schema_json}
+    recipe_template = _loads(gen.recipe_template_json)
+    example_recipe = _loads(gen.example_recipe_json)
+    ok, message = validate_recipe(example_recipe)
+
+    # ③ 生成結果と検証結果をリクエストに格納
+    req.suggested_recipe = recipe_template
+    req.tested_params = example_recipe
     req.confidence = max(0.0, min(1.0, gen.confidence))
     req.concerns = gen.concerns
-    req.tested_params = example_params
     req.test_results = TestResult(
-        passed=bool(test.get("passed")),
+        passed=ok,
         total=1,
-        passed_count=1 if test.get("passed") else 0,
-        failed_cases=[] if test.get("passed") else [test.get("message", "テスト失敗")],
-        detail=test.get("message", ""),
+        passed_count=1 if ok else 0,
+        failed_cases=[] if ok else [message],
+        detail=message,
     )
     update_pending_request(req)
 
     return {
-        "結果": "生成・テスト完了",
+        "結果": "設計・検証完了",
         "タイプ名": req.suggested_type_name,
         "説明": gen.explanation,
-        "テスト": "合格" if req.test_results.passed else f"不合格（{test.get('message','')}）",
+        "テスト": "合格" if ok else f"不合格（{message}）",
         "自信度": req.confidence,
         "懸念点": req.concerns,
-        "例params": example_params,
+        "レシピ": recipe_template,
+        "例レシピ": example_recipe,
     }
 
 
@@ -184,6 +187,60 @@ def _paramize_and_store(req: PendingTypeRequest) -> int:
     return len(items)
 
 
+def _fill_recipes_and_store(req: PendingTypeRequest) -> int:
+    """承認された新typeのレシピを、各人の原文で埋めて dynamic_constraints に保存する。
+
+    生成時の example_recipe（見本）に形式を揃え、各occurrenceの原文から選択子の値
+    （weekday=水曜 等）を埋めて**完成レシピ**にする。本人IDはoccurrenceの値で上書き。
+    保存した件数を返す。
+    """
+    from src.agents import ParamsAgent
+
+    occurrences = [
+        {
+            "index": i,
+            "person_id": o.get("person_id"),
+            "date": o.get("date"),
+            "source_text": o.get("source_text", ""),
+        }
+        for i, o in enumerate(req.occurrences)
+    ]
+
+    results = ParamsAgent().convert(
+        type_name=req.suggested_type_name,
+        param_schema_json=json.dumps(req.suggested_recipe or {}, ensure_ascii=False),
+        example_params_json=json.dumps(req.tested_params or {}, ensure_ascii=False),
+        occurrences=occurrences,
+    )
+    by_index = {r.index: r for r in results}
+
+    items: list[dict] = []
+    for occ in occurrences:
+        r = by_index.get(occ["index"])
+        if r is None:
+            continue
+        try:
+            recipe = json.loads(r.params_json)
+        except (json.JSONDecodeError, TypeError):
+            continue
+        if not isinstance(recipe, dict) or "operation" not in recipe:
+            continue
+        # 本人IDは原文解釈に頼らず、occurrenceの確かな値で上書きする
+        if recipe.get("who", "person") == "person" and occ["person_id"]:
+            recipe["person_id"] = occ["person_id"]
+        items.append({
+            "type": req.suggested_type_name,
+            "params": recipe,
+            "source": {
+                "person_id": occ["person_id"], "date": occ["date"],
+                "source_text": occ["source_text"],
+            },
+        })
+
+    save_dynamic_constraints(items)
+    return len(items)
+
+
 @router.post(
     "/pending-types/{req_id}/approve",
     summary="承認: 生成ハンドラをソルバーに登録し、影響シフトを再計算キューへ",
@@ -205,31 +262,37 @@ def approve_pending(req_id: str, reviewer_id: str = "admin", comment: str = ""):
             detail=f"このリクエストは既に処理済みです（現在: {req.status}）",
         )
 
-    # 承認＝生成ハンドラをソルバーに登録（以降このtypeが使えるようになる）
-    registered = False
-    if req.suggested_handler_code:
+    # レシピ方式（推奨）: インタプリタが処理するのでハンドラ登録は不要。常に使える。
+    # 旧Python方式: 生成コードを動的ハンドラとして登録する（後方互換）。
+    recipe_mode = bool(req.suggested_recipe)
+    usable = recipe_mode
+    register_label = "不要（レシピ方式・インタプリタが処理）"
+    if not recipe_mode and req.suggested_handler_code:
         try:
             register_dynamic_handler(req.suggested_type_name, req.suggested_handler_code)
-            registered = True
+            usable = True
+            register_label = "完了（ソルバーで使えます）"
         except Exception as exc:
             logger.exception("ハンドラ登録に失敗")
             raise HTTPException(
                 status_code=500,
                 detail=f"承認しましたがハンドラ登録に失敗しました: {exc}",
             )
+    elif not recipe_mode:
+        register_label = "スキップ（生成物が無い）"
 
-    # 各人の原文を params化して制約として保存（＝ハンドラに渡す「材料」を用意）
+    # 各人の原文を埋めて制約インスタンスとして保存（＝ソルバーに渡す「材料」を用意）
     paramized = 0
     params_warning = None
-    if registered and req.occurrences:
+    if usable and req.occurrences:
         if not llm.is_available():
-            params_warning = "Gemini未設定のため原文のparams化をスキップしました（ハンドラは登録済み）。"
+            params_warning = "Gemini未設定のため原文の埋め込みをスキップしました（定義は登録済み）。"
         else:
             try:
-                paramized = _paramize_and_store(req)
+                paramized = _fill_recipes_and_store(req) if recipe_mode else _paramize_and_store(req)
             except Exception as exc:
-                logger.exception("params化に失敗")
-                params_warning = f"ハンドラは登録しましたが、原文のparams化に失敗しました: {exc}"
+                logger.exception("制約インスタンス化に失敗")
+                params_warning = f"定義は登録しましたが、原文の埋め込みに失敗しました: {exc}"
 
     req.status = "approved"
     req.reviewed_at = datetime.now()
@@ -247,7 +310,8 @@ def approve_pending(req_id: str, reviewer_id: str = "admin", comment: str = ""):
     result = {
         "結果": "承認しました",
         "タイプ名": req.suggested_type_name,
-        "ハンドラ登録": "完了（ソルバーで使えます）" if registered else "スキップ（生成コードが無い）",
+        "方式": "レシピ" if recipe_mode else "Python（旧）",
+        "ハンドラ登録": register_label,
         "反映した要望(params)件数": paramized,
         "再計算キューに入れたシフト数": len(req.affected_shift_ids),
     }

@@ -1,0 +1,44 @@
+あなたは飲食店シフトの制約を「安全な部品の組み合わせ＝レシピ」に翻訳する設計者です。
+**Pythonコードは書きません。** 下記の操作と選択子だけを使って、新しい制約タイプを表現してください。
+
+[操作（1つだけ選ぶ）]
+- forbid      … Hard: 選択した枠に入れない（例「毎週水曜は不可」）
+- require     … Hard: 選択範囲に最低 count 人（例「ランチにホール2名」）
+- limit_count … Hard: 対象時間帯に入った「日数」を期間内 max 回まで（例「遅番は月3回まで」）
+- penalize    … Soft: 条件成立で罰金。なるべく避ける（例「試験期間は極力入れない」）
+- prefer      … Soft: 選択枠になるべく入れる（例「できれば早番に」）
+※ 「絶対/不可」はHard(forbid/require)、「なるべく/できれば」はSoft(penalize/prefer)。混同しない。
+
+[選択子（レシピのフィールド）]
+- who: "person" | "role" | "skill" | "pair" | "all"
+- person_id, person_id_b（who=pairの相手）, role_id, skill_id
+- when: "date" | "date_range" | "weekday" | "always"
+- date（"YYYY-MM-DD"）, date_start, date_end, weekday（0=月..6=日）
+- band: "window" | "all_day"
+- time_start, time_end（"HH:MM"）
+- where: "position" | "any"
+- position_id（ホール=pos_hall, キッチン=pos_kitchen, レジ=pos_register）
+- count（require）, max（limit_count）, weight（soft操作・50〜1000）, period: "total"|"week"|"month"
+
+[このtypeに与えられた情報]
+type名: $type_name
+ユーザーの言い回し:
+$source_texts
+要約: $summary
+AIの解釈: $ai_assessment
+
+[出力してほしいもの]
+- recipe_template_json: このtypeの操作と固定の選択子をJSON文字列で。
+  各人ごとに変わる値（person_id や 具体的な weekday/date など）は省略 or 代表値でよい。
+  例: '{"operation":"forbid","who":"person","when":"weekday","band":"all_day"}'
+- example_recipe_json: 検証用の**完成した**レシピをJSON文字列で（person_id は "p1" を使う）。
+  例: '{"operation":"forbid","who":"person","person_id":"p1","when":"weekday","weekday":2,"band":"all_day"}'
+- fill_fields: 各人の原文から後で埋める選択子の名前リスト（例 ["person_id","weekday"]）。
+- explanation: このレシピが何をするかの日本語の短い説明。
+- confidence: 0.0〜1.0。**上記の操作・選択子だけでは表現できない**と感じたら低くする。
+- concerns: 懸念点（特に「手持ちデータに無い情報が要る」「他者の希望に依存」「過去の実績が要る」等、
+  表現できない疑いがあれば必ず明記）。無ければ空配列。
+
+注意:
+- 必ず上記の操作・選択子だけを使う。存在しないフィールドや概念を作らない。
+- 表現できないルール（交渉依存・履歴依存・データ欠落など）は無理に当てはめず、confidenceを低くしてconcernsに理由を書く。

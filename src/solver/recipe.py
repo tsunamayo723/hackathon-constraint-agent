@@ -86,6 +86,57 @@ def _clip_weight(w: int) -> int:
     return max(50, min(1000, int(w)))
 
 
+def validate_recipe(recipe: dict) -> tuple[bool, str]:
+    """レシピが解釈可能かを確かめる（パース＋小シナリオへ適用）。
+
+    旧Python方式のサンドボックス（subprocess＋exec）の代わり。レシピは固定インタプリタが
+    処理するので**任意コード実行が無く**、プロセス内で安全に検証できる。
+    返り値: (合格か, メッセージ)
+    """
+    try:
+        r = Recipe.model_validate(recipe)
+    except Exception as exc:
+        return False, f"レシピの形式エラー: {exc}"
+
+    # 検証用の小さな文脈（3名×1週間×ホール）
+    from datetime import date as _date
+
+    from ortools.sat.python import cp_model
+
+    from src.models.master import Masters
+    from src.solver.engine import _build_variables
+    from src.solver.slots import build_day_slots, date_range
+
+    masters = Masters.model_validate({
+        "persons": [
+            {"id": "p1", "name": "A", "role_id": "r_lead", "skill_ids": ["sk_bar"]},
+            {"id": "p2", "name": "B", "role_id": "r_staff", "skill_ids": []},
+            {"id": "p3", "name": "C", "role_id": "r_staff", "skill_ids": []},
+        ],
+        "positions": [{"id": "pos_hall", "name": "ホール"}],
+        "roles": [{"id": "r_lead", "name": "リーダー"}, {"id": "r_staff", "name": "スタッフ"}],
+        "skills": [{"id": "sk_bar", "name": "バー"}],
+    })
+    ctx = SolverContext(
+        model=cp_model.CpModel(),
+        days=date_range(_date(2026, 11, 2), _date(2026, 11, 8)),
+        slots=build_day_slots("11:00", "22:00", 60),
+        masters=masters,
+    )
+    _build_variables(ctx)
+
+    before = len(ctx.penalties) + len(ctx.shortages) + len(ctx.model.Proto().constraints)
+    try:
+        apply_recipe(r, ctx)
+    except Exception as exc:
+        return False, f"適用時エラー: {exc}"
+    after = len(ctx.penalties) + len(ctx.shortages) + len(ctx.model.Proto().constraints)
+
+    if after <= before:
+        return False, "このレシピは制約を1つも生みませんでした（選択子が空・対象が居ない可能性）"
+    return True, "レシピを検証シナリオに適用できました（制約が生成されました）"
+
+
 # ── 選択子の解決 ────────────────────────────────────────────────────
 
 def _resolve_persons(r: Recipe, ctx: SolverContext) -> list[str]:

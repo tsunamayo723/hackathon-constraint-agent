@@ -144,7 +144,7 @@ _STATUS_LABEL = {"pending": "⏳ 承認待ち", "approved": "✅ 承認済み", 
 # ── 1件ずつカード表示 ────────────────────────────────────────────────
 for req in queue:
     req_id = req["id"]
-    generated = bool(req.get("suggested_handler_code"))
+    generated = bool(req.get("suggested_handler_code") or req.get("suggested_recipe"))
 
     with st.container(border=True):
         # 見出し
@@ -202,50 +202,66 @@ for req in queue:
                 if not tr["passed"] and tr.get("failed_cases"):
                     st.warning("失敗内容：" + " / ".join(tr["failed_cases"]))
                 st.info(
-                    "このテストは「3名×1週間の小シナリオに適用してエラーなく解けるか」を見る"
-                    "**簡易動作確認**です。ルールの意味が正しいか（Hard/Softや対象範囲）は"
-                    "コードと確認ポイントで人が判断してください。"
+                    "このテストは「3名×1週間の検証シナリオにレシピを当てて、エラーなく制約が作られるか」"
+                    "を見る**動作確認**です（任意コードの実行はありません）。ルールの意味が正しいか"
+                    "（Hard/Softや対象範囲）は、レシピと確認ポイントで人が判断してください。"
                 )
 
-        # ── 未生成: 生成ボタン ──────────────────────────────────
+        # ── 未生成: 設計ボタン ──────────────────────────────────
         if not generated:
-            st.info("まだAIがハンドラを生成していません。")
+            st.info("まだAIがルールを設計していません。")
             with st.expander("💬 元の発言を見る"):
                 for s in req["source_texts"]:
                     st.markdown(f"- 「{s}」")
-            if st.button("🤖 AIにハンドラを生成させる", key=f"gen_{req_id}", type="primary"):
-                with st.spinner("AIがハンドラを生成・テスト中..."):
+            if st.button("🤖 AIにルールを設計させる", key=f"gen_{req_id}", type="primary"):
+                with st.spinner("AIがレシピ（操作×選択子）を設計・検証中..."):
                     try:
                         r = _post(f"/admin/pending-types/{req_id}/generate")
                         if r.status_code == 200:
-                            st.success("生成・テストが完了しました。")
+                            st.success("設計・検証が完了しました。")
                             st.rerun()
                         else:
                             detail = r.json().get("detail", r.text)
-                            st.error(f"生成に失敗（{r.status_code}）：{detail}")
+                            st.error(f"設計に失敗（{r.status_code}）：{detail}")
                     except Exception as exc:
-                        st.error(f"生成に失敗しました: {exc}")
+                        st.error(f"設計に失敗しました: {exc}")
             continue
 
         # ── 生成済み: 詳細タブ ─────────────────────────────────
-        tab_code, tab_schema, tab_src, tab_json = st.tabs(
-            ["📝 生成コード", "🧩 スキーマ", "💬 元の発言", "{} JSON"]
-        )
-        with tab_code:
-            st.code(req["suggested_handler_code"], language="python")
-        with tab_schema:
-            st.json(req.get("suggested_schema") or {})
-        with tab_src:
-            for s in req["source_texts"]:
-                st.markdown(f"- 「{s}」")
-        with tab_json:
-            st.json(req)
+        recipe = req.get("suggested_recipe")
+        if recipe:
+            tab_recipe, tab_src, tab_json = st.tabs(
+                ["🧩 レシピ（操作×選択子）", "💬 元の発言", "{} JSON"]
+            )
+            with tab_recipe:
+                st.caption("AIは生のコードではなく、**安全な部品（操作＋選択子）の組み合わせ**を設計します。")
+                st.json(recipe)
+                if req.get("tested_params"):
+                    st.markdown("検証に使った完成レシピの例：")
+                    st.json(req["tested_params"])
+            with tab_src:
+                for s in req["source_texts"]:
+                    st.markdown(f"- 「{s}」")
+            with tab_json:
+                st.json(req)
+        else:
+            tab_code, tab_schema, tab_src, tab_json = st.tabs(
+                ["📝 生成コード", "🧩 スキーマ", "💬 元の発言", "{} JSON"]
+            )
+            with tab_code:
+                st.code(req.get("suggested_handler_code") or "", language="python")
+            with tab_schema:
+                st.json(req.get("suggested_schema") or {})
+            with tab_src:
+                for s in req["source_texts"]:
+                    st.markdown(f"- 「{s}」")
+            with tab_json:
+                st.json(req)
 
         # ── 承認 / 却下 ────────────────────────────────────────
         if req["status"] == "pending":
             st.caption(
-                "※ 現状、承認は記録されますが、ハンドラを本番ソルバーへ自動登録して"
-                "シフトに反映する処理は次フェーズ（A1b）です。"
+                "※ 承認すると、AIが各人の原文をレシピに埋めて制約化し、再計算でシフトに反映されます。"
             )
             comment = st.text_input("コメント（任意）", key=f"cmt_{req_id}", placeholder="承認/却下の理由など")
             b1, b2, _ = st.columns([1, 1, 3])

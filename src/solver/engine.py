@@ -27,6 +27,7 @@ from src.models.solver_io import (
     StaffStat,
 )
 from .context import SolverContext
+from .recipe import apply_recipe
 from .slots import Slot, build_day_slots, date_range
 
 logger = logging.getLogger("uvicorn.error")
@@ -71,20 +72,25 @@ def solve(
             continue
         handler(c.params, ctx)
 
-    # 動的タイプ（AIが生成・承認した新type）。登録済みハンドラがあれば適用。
+    # 動的タイプ（AIが生成・承認した新type）。
+    # paramsが「レシピ（operation付き）」なら固定インタプリタで適用（execしない・安全）。
+    # 旧Python方式なら登録済みハンドラを使う（後方互換）。
     for dc in spec.dynamic_constraints:
         dtype = dc.get("type", "")
-        handler = get_handler(dtype)
-        if handler is None:
-            # 未承認/未登録の新type → 黙って捨てず警告で明示
-            warnings.append(SolverWarning(type=f"unregistered:{dtype}"))
-            continue
+        params = dc.get("params", {})
         try:
-            handler(dc.get("params", {}), ctx)
+            if isinstance(params, dict) and "operation" in params:
+                apply_recipe(params, ctx)
+            else:
+                handler = get_handler(dtype)
+                if handler is None:
+                    # 未承認/未登録の新type → 黙って捨てず警告で明示
+                    warnings.append(SolverWarning(type=f"unregistered:{dtype}"))
+                    continue
+                handler(params, ctx)
         except Exception as exc:
-            # AI生成ハンドラの実行時バグでソルバー全体を落とさない。
-            # その制約だけ諦め、警告で正直に可視化する（→ 再生成を促す）。
-            logger.warning("動的ハンドラ '%s' の実行に失敗: %s", dtype, exc)
+            # 生成物の不備でソルバー全体を落とさない。その制約だけ諦め警告で可視化（→再生成を促す）。
+            logger.warning("動的制約 '%s' の適用に失敗: %s", dtype, exc)
             warnings.append(SolverWarning(type=f"handler_error:{dtype}"))
 
     # availability は全件出そろってから適用（枠外コマを0に固定）

@@ -13,13 +13,19 @@ get_handler は「組み込み → 動的」の順で探す。
 動的登録は当面インメモリ（再起動で消える。永続化はSupabase段階）。
 """
 
-from .builtin import handle_availability, handle_headcount, handle_separate
+from .builtin import (
+    handle_availability,
+    handle_headcount,
+    handle_prefer_person,
+    handle_separate,
+)
 
 # 組み込み（既知16typeのうち実装済み）。引数は Pydantic params。
 HANDLERS = {
     "headcount_requirement": handle_headcount,
     "availability": handle_availability,
     "separate": handle_separate,
+    "prefer_person": handle_prefer_person,
 }
 
 # AIが生成し承認された動的ハンドラ。引数は dict params。

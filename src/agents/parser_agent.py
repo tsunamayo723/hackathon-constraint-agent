@@ -29,6 +29,7 @@ from src.models import (
     UntranslatedConstraint,
 )
 
+from ._context import masters_context
 from .base import GeminiAgent
 
 # 確信度がこれ未満なら「翻訳できなかった」扱いにする（分かったフリ防止）
@@ -68,6 +69,7 @@ class ParserAgent(GeminiAgent):
         result: _ParseResult = self.run_structured(
             input_text=input_data.input_text,
             person_id=input_data.person_id or "（指定なし）",
+            masters=masters_context(),  # 実在IDを渡し、存在しないポジションID捏造を防ぐ
         )
 
         translated: list[TranslatedConstraint] = []

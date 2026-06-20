@@ -17,6 +17,7 @@ from pydantic import BaseModel
 from src import llm
 from src.models.admin_queue import PendingTypeRequest
 
+from ._context import masters_context
 from .base import GeminiAgent
 
 
@@ -38,11 +39,13 @@ class RecipeAgent(GeminiAgent):
     schema = GeneratedRecipe
     prompt_name = "recipe_gen"
 
-    def generate(self, req: PendingTypeRequest) -> GeneratedRecipe:
+    def generate(self, req: PendingTypeRequest, feedback: str = "") -> GeneratedRecipe:
         source_texts = "\n".join(f"- {t}" for t in req.source_texts)
         return self.run_structured(
             type_name=req.suggested_type_name,
             source_texts=source_texts,
             summary=req.summary or "（要約なし）",
             ai_assessment=req.ai_assessment or "（見解なし）",
+            feedback=feedback.strip() or "（追加情報なし）",
+            masters=masters_context(),  # 実在IDを渡し、存在しないポジションID捏造を防ぐ
         )

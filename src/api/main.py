@@ -7,6 +7,7 @@
 """
 
 from fastapi import Body, FastAPI, HTTPException
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import HTMLResponse
 from pydantic import TypeAdapter, ValidationError
 
@@ -17,8 +18,10 @@ from src.models import (
 )
 from src.api.routes_parser import router as parser_router
 from src.api.routes_admin import router as admin_router
+from src.api.routes_chat import router as chat_router
 from src.api.routes_setup import router as setup_router
 from src.api.routes_solver import router as solver_router
+from src.api.routes_submit import router as submit_router
 
 
 tags_metadata = [
@@ -66,6 +69,14 @@ tags_metadata = [
             "ハッカソンデモではこの画面を見せて「実運用ではここが管理者画面です」と説明します。"
         ),
     },
+    {
+        "name": "提出者チャット",
+        "description": (
+            "**提出者向け**の備考(note)確認チャット。\n\n"
+            "デモの主役UI（React）から呼ばれます。Gemini(Flash)が曖昧な備考を短く聞き返し、"
+            "はっきりしたら確定要約を返します。表現できない要望は正直に拒否します。"
+        ),
+    },
 ]
 
 
@@ -103,10 +114,25 @@ app = FastAPI(
     openapi_tags=tags_metadata,
 )
 
+# React開発サーバー(Vite)からのアクセスを許可する（CORS）。
+# 本番(T6)で配信元が決まったら origin を追加する。
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=[
+        "http://localhost:5173", "http://127.0.0.1:5173",  # Vite 既定
+        "http://localhost:3000", "http://127.0.0.1:3000",
+    ],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
 app.include_router(setup_router)
 app.include_router(parser_router)
 app.include_router(solver_router)
 app.include_router(admin_router)
+app.include_router(chat_router)
+app.include_router(submit_router)
 
 
 # ── トップページ ────────────────────────────────────────────────────

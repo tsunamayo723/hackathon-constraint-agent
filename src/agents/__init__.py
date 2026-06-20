@@ -14,9 +14,11 @@ from .handler_agent import GeneratedHandler, HandlerAgent
 from .note_agent import NoteAgent, NoteResult
 from .params_agent import ParamItem, ParamsAgent
 from .recipe_agent import GeneratedRecipe, RecipeAgent
+from .chat_agent import ChatAgent, ChatTurn
 
 __all__ = [
     "ParserAgent", "parse", "HandlerAgent", "GeneratedHandler",
     "NoteAgent", "NoteResult", "ParamsAgent", "ParamItem",
     "RecipeAgent", "GeneratedRecipe",
+    "ChatAgent", "ChatTurn",
 ]

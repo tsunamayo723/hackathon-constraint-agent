@@ -47,6 +47,11 @@ def update_pending_request(req: PendingTypeRequest) -> None:
     _pending_queue[req.id] = req
 
 
+def clear_pending_requests() -> None:
+    """承認キューを空にする（デモデータ投入時のリセット用）。"""
+    _pending_queue.clear()
+
+
 def mark_shift_for_recalc(shift_id: str, reason: str) -> None:
     _shift_status[shift_id] = {
         "recalculation_needed": True,
@@ -165,3 +170,43 @@ def get_note_results() -> list[dict]:
 def clear_note_results() -> None:
     global _note_results
     _note_results = []
+
+
+# ── 投入済みデモデータのメタ情報 ─────────────────────────────────────
+# load-demo で投入したパターンの meta（label/frame/demo_submitter 等）を覚えておく。
+# 提出者UIの「デモの希望を読み込む」で overall_note を返すのに使う。
+_demo_meta: Optional[dict] = None
+
+
+def save_demo_meta(meta: Optional[dict]) -> None:
+    """投入したデモパターンの meta を保存する（CSV手動投入時は None でクリア）。"""
+    global _demo_meta
+    _demo_meta = meta
+
+
+def get_demo_meta() -> Optional[dict]:
+    return _demo_meta
+
+
+# ── 責任者への質問（需要に依存する要望の保留） ──────────────────────
+# 「混みそうなら入ります」等を即拒否せず、実行前に責任者へ確認する。
+# 各要素: {id, person_id, question, summary, recipe(はいの時のレシピ), status, answer}
+_manager_questions: list[dict] = []
+
+
+def add_manager_question(q: dict) -> None:
+    _manager_questions.append(q)
+
+
+def list_manager_questions(status: Optional[str] = None) -> list[dict]:
+    if status:
+        return [q for q in _manager_questions if q.get("status") == status]
+    return list(_manager_questions)
+
+
+def get_manager_question(qid: str) -> Optional[dict]:
+    return next((q for q in _manager_questions if q.get("id") == qid), None)
+
+
+def clear_manager_questions() -> None:
+    _manager_questions.clear()

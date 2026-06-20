@@ -1,0 +1,11 @@
+id,name,role_id,skill_ids
+p01,スタッフ01,r_staff,sk_coffee;sk_register
+p02,スタッフ02,r_owner,sk_coffee;sk_food
+p03,スタッフ03,r_staff,sk_register
+p04,スタッフ04,r_staff,sk_coffee
+p05,スタッフ05,r_staff,sk_register;sk_food
+p06,スタッフ06,r_staff,sk_coffee
+p07,スタッフ07,r_staff,sk_register
+p08,スタッフ08,r_newbie,sk_coffee
+p09,スタッフ09,r_newbie,
+p10,スタッフ10,r_staff,sk_food

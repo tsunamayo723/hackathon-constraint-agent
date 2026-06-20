@@ -6,12 +6,13 @@ AIに生のPythonを書かせる代わりに、安全な「操作＋選択子」
 これでAPI誤用バグ（CP-SAT変数のbool評価・存在しないキー参照など）が
 **構造的に発生しなくなる**（AIコードのexecも不要）。
 
-操作（5個）:
-  forbid       … Hard: 選択した枠に入れない
-  require      … Hard: 選択範囲に最低 count 人（不足は減点＝best-effort）
-  limit_count  … Hard: 条件に当たる「日数」を期間内 max 回まで
-  penalize     … Soft: 条件成立で weight の罰金（なるべく避ける）
-  prefer       … Soft: 選択枠をなるべく入れる（入らないと weight の罰金）
+操作（6個）:
+  forbid          … Hard: 選択した枠に入れない
+  require         … Hard: 選択範囲に最低 count 人（不足は減点＝best-effort）。人数を増やす要望もこれ。
+  limit_count     … Hard: 条件に当たる「日数」を期間内 max 回まで
+  penalize        … Soft: 条件成立で weight の罰金（なるべく避ける）
+  prefer          … Soft: 選択枠をなるべく入れる（入らないと weight の罰金）
+  rest_after_late … Soft: 前日に band(遅番)で働いたら翌日はなるべく休み（逐次条件）
 
 選択子:
   誰(who)     person / role / skill / pair / all
@@ -25,8 +26,10 @@ AIに生のPythonを書かせる代わりに、安全な「操作＋選択子」
   exam_period         = penalize(person, date_range, all_day, weight)
   max_late_shift_count= limit_count(person, band=window 22:00-, max=3, period=month)
   headcount_requirement = require(all, band=window, where=position, count)
+  「朝の人数を増やしたい」 = require(all, band=window 朝, count=N)   ← 人数増しは require
   separate            = penalize(pair, ...)
   time_preference     = prefer(person, band=window)
+  「前日が遅番なら翌日休み」= rest_after_late(person/all, band=window 遅番, weight)
 """
 
 from datetime import date
@@ -49,7 +52,7 @@ class Recipe(BaseModel):
 
     model_config = ConfigDict(extra="forbid")
 
-    operation: Literal["forbid", "require", "limit_count", "penalize", "prefer"]
+    operation: Literal["forbid", "require", "limit_count", "penalize", "prefer", "rest_after_late"]
 
     # 誰 who
     who: Literal["person", "role", "skill", "pair", "all"] = "person"
@@ -244,6 +247,8 @@ def apply_recipe(recipe, ctx: SolverContext) -> None:
         _apply_penalize(r, ctx, persons, days, slots)
     elif r.operation == "prefer":
         _apply_prefer(r, ctx, persons, days, slots)
+    elif r.operation == "rest_after_late":
+        _apply_rest_after_late(r, ctx, persons, slots)
 
 
 def _apply_forbid(r, ctx, persons, days, slots):
@@ -353,3 +358,28 @@ def _apply_prefer(r, ctx, persons, days, slots):
                         nv = ctx.model.NewBoolVar(f"pref_{pid}_{di}_{s.index}")
                         ctx.model.Add(nv + ctx.present[(pid, di, s.index)] == 1)
                         ctx.add_penalty(w, nv)
+
+
+def _apply_rest_after_late(r, ctx, persons, slots):
+    """Soft（逐次条件）: 前日に band(遅番)で働いたら、翌日はなるべく休み。
+
+    前日(di)の遅番枠に1コマでも入ったら late_d=1。翌日(di+1)も勤務なら weight の罰金。
+    ＝「前の日が遅番なら翌日はお休み希望」。band で「遅番」の時間帯を指定する。
+    """
+    w = _clip_weight(r.weight)
+    ndays = len(ctx.days)
+    for pid in persons:
+        for di in range(ndays - 1):
+            late_slots = [
+                ctx.present[(pid, di, s.index)]
+                for s in slots
+                if (pid, di, s.index) in ctx.present
+            ]
+            nxt = ctx.work_day.get((pid, di + 1))
+            if not late_slots or nxt is None:
+                continue
+            late_d = ctx.model.NewBoolVar(f"late_{pid}_{di}")
+            ctx.model.AddMaxEquality(late_d, late_slots)   # 1コマでも遅番なら late=1
+            z = ctx.model.NewBoolVar(f"rest_late_{pid}_{di}")
+            ctx.model.Add(z >= late_d + nxt - 1)           # 前日遅番 かつ 翌日勤務 → 罰金
+            ctx.add_penalty(w, z)

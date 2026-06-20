@@ -39,6 +39,60 @@ def _csv_to_records(uploaded_file) -> list[dict]:
 
 
 # ═══════════════════════════════════════════════════════════════════
+#  ⏩ デモデータをワンクリック投入（最短ルート）
+# ═══════════════════════════════════════════════════════════════════
+
+st.header("⏩ デモデータを使う（最短）")
+st.caption(
+    "CSVを用意しなくても、準備済みのデモデータをワンクリックで投入できます"
+    "（**10人 × 10日** のコンパクトなデータ）。  \n"
+    "※ 投入すると既存の方針・出勤希望・承認キューはクリアされ、"
+    "マスタ・営業情報・必要人数も選んだデモで置き換わります。"
+)
+
+try:
+    _demo_patterns = requests.get(f"{API_URL}/setup/demo-patterns", timeout=10).json()["patterns"]
+except requests.exceptions.ConnectionError:
+    _demo_patterns = []
+    st.error(
+        "**APIサーバーに接続できません。**\n\n"
+        "別ターミナルで起動してください:\n"
+        "```\npython -m uvicorn src.api.main:app --reload --port 8001\n```"
+    )
+
+if _demo_patterns:
+    _labels = {p["key"]: p["label"] for p in _demo_patterns}
+    _descs = {p["key"]: p["description"] for p in _demo_patterns}
+    demo_key = st.selectbox(
+        "デモパターンを選択",
+        options=list(_labels.keys()),
+        format_func=lambda k: _labels[k],
+    )
+    st.caption(_descs.get(demo_key, ""))
+
+    if st.button("📥 このデモデータを投入する", type="primary"):
+        try:
+            resp = requests.post(f"{API_URL}/setup/load-demo", json={"pattern": demo_key}, timeout=30)
+            if resp.status_code == 200:
+                body = resp.json()
+                g = body["概要"]
+                st.success(
+                    f"✅ {body['結果']}  \n"
+                    f"スタッフ {g['スタッフ数']}名 / 期間 {g['対象期間']}  \n"
+                    f"必要人数 {g['必要人数の行数']}行 / 出勤希望 {g['出勤希望の行数']}行 / "
+                    f"提出者(主役) {g['提出者(主役)']}"
+                )
+                st.info("このまま④で計算、または提出者UI（:5173）で主役 p01 の体験を試せます。")
+            else:
+                st.error(f"投入に失敗しました（{resp.status_code}）: {resp.text}")
+        except requests.exceptions.ConnectionError:
+            st.error("APIサーバーに接続できません。")
+
+st.divider()
+st.subheader("または手動でCSVを用意する場合 ↓")
+
+
+# ═══════════════════════════════════════════════════════════════════
 #  ① マスタ設定（CSVアップロード）
 # ═══════════════════════════════════════════════════════════════════
 

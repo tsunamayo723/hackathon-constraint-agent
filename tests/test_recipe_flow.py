@@ -145,7 +145,7 @@ def test_fill_recipes_overrides_person_id(monkeypatch):
 def test_generate_endpoint_uses_recipe(monkeypatch):
     monkeypatch.setattr(llm, "is_available", lambda: True)
 
-    def fake_generate(self, req):
+    def fake_generate(self, req, feedback=""):
         return GeneratedRecipe(
             recipe_template_json=json.dumps({"operation": "forbid", "who": "person",
                                              "when": "weekday", "band": "all_day"}),
@@ -173,7 +173,7 @@ def test_generate_honestly_rejects_inexpressible(monkeypatch):
     """表現できないルールはレシピを作らず、理由つきで正直に拒否する。"""
     monkeypatch.setattr(llm, "is_available", lambda: True)
 
-    def fake_generate(self, req):
+    def fake_generate(self, req, feedback=""):
         return GeneratedRecipe(
             expressible=False, reject_category="negotiation_dependent",
             recipe_template_json="", example_recipe_json="", fill_fields=[],

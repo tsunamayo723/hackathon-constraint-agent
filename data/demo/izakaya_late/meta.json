@@ -1,0 +1,21 @@
+{
+  "key": "izakaya_late",
+  "label": "居酒屋（ディナー偏重・遅番多め）",
+  "description": "夜の必要人数が多く、遅番(16時〜)中心。『22時以降は月◯回まで』のような深夜系ルールが映えるシナリオ。",
+  "frame": {
+    "period": {
+      "start": "2026-11-02",
+      "end": "2026-11-11"
+    },
+    "operating_window": {
+      "open": "11:00",
+      "close": "22:00",
+      "slot_minutes": 30
+    },
+    "policy_mode": "balance"
+  },
+  "demo_submitter": {
+    "person_id": "p01",
+    "overall_note": "毎週水曜は習い事があって入れません"
+  }
+}

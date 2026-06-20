@@ -2,12 +2,15 @@
 **Pythonコードは書きません。** 下記の操作と選択子だけを使って、新しい制約タイプを表現してください。
 
 [操作（1つだけ選ぶ）]
-- forbid      … Hard: 選択した枠に入れない（例「毎週水曜は不可」）
-- require     … Hard: 選択範囲に最低 count 人（例「ランチにホール2名」）
-- limit_count … Hard: 対象時間帯に入った「日数」を期間内 max 回まで（例「遅番は月3回まで」）
-- penalize    … Soft: 条件成立で罰金。なるべく避ける（例「試験期間は極力入れない」）
-- prefer      … Soft: 選択枠になるべく入れる（例「できれば早番に」）
-※ 「絶対/不可」はHard(forbid/require)、「なるべく/できれば」はSoft(penalize/prefer)。混同しない。
+- forbid          … Hard: 選択した枠に入れない（例「毎週水曜は不可」）
+- require         … Hard: 選択範囲に最低 count 人（例「ランチにホール2名」）。
+                    **「○○の時間帯の人数を増やしたい」も require**（例「朝の人数を増やす」=require(all,band=朝の時間帯,count=N)）。
+- limit_count     … Hard: 対象時間帯に入った「日数」を期間内 max 回まで（例「遅番は月3回まで」）
+- penalize        … Soft: 条件成立で罰金。なるべく避ける（例「試験期間は極力入れない」）
+- prefer          … Soft: 選択枠になるべく入れる（例「できれば早番に」）
+- rest_after_late … Soft: **前日に band(遅番) で働いたら翌日はなるべく休み**（例「前日が遅番なら翌日休み希望」）。
+                    band=window で「遅番」とみなす時間帯を指定（例 18:00-22:00）。who は person/role/all。
+※ 「絶対/不可」はHard(forbid/require)、「なるべく/できれば」はSoft(penalize/prefer/rest_after_late)。混同しない。
 
 [選択子（レシピのフィールド）]
 - who: "person" | "role" | "skill" | "pair" | "all"
@@ -17,8 +20,11 @@
 - band: "window" | "all_day"
 - time_start, time_end（"HH:MM"）
 - where: "position" | "any"
-- position_id（ホール=pos_hall, キッチン=pos_kitchen, レジ=pos_register）
+- position_id（マスタのポジションID。具体的なIDが分からなければ where="any" にする）
 - count（require）, max（limit_count）, weight（soft操作・50〜1000）, period: "total"|"week"|"month"
+
+[このお店の実在ID（position_id/role_id/skill_id はここから選ぶ。存在しないIDは作らない）]
+$masters
 
 [このtypeに与えられた情報]
 type名: $type_name
@@ -26,6 +32,9 @@ type名: $type_name
 $source_texts
 要約: $summary
 AIの解釈: $ai_assessment
+
+[管理者からの追加情報（再生成時の回答。前回の懸念・却下に対する補足。空なら無視）]
+$feedback
 
 [まず判定: 表現できるか（分かったフリをしない）]
 このルールが上記の操作・選択子＋手持ちデータ（人/役職/スキル/ポジション/日付/曜日/時間帯/出勤可否）
@@ -44,8 +53,10 @@ reject_category を次から1つ選び、explanation に理由を書いてくだ
 - recipe_template_json: このtypeの操作と固定の選択子をJSON文字列で。
   各人ごとに変わる値（person_id や 具体的な weekday/date など）は省略 or 代表値でよい。
   例: '{"operation":"forbid","who":"person","when":"weekday","band":"all_day"}'
-- example_recipe_json: 検証用の**完成した**レシピをJSON文字列で（person_id は "p1" を使う）。
+- example_recipe_json: 検証用の**完成した**レシピをJSON文字列で（person系は person_id="p1"、値は具体的に）。
   例: '{"operation":"forbid","who":"person","person_id":"p1","when":"weekday","weekday":2,"band":"all_day"}'
+  他例（朝の人数増し）: '{"operation":"require","who":"all","band":"window","time_start":"11:00","time_end":"14:00","where":"any","count":3}'
+  他例（前日遅番→翌日休み）: '{"operation":"rest_after_late","who":"person","person_id":"p1","band":"window","time_start":"18:00","time_end":"22:00","weight":600}'
 - fill_fields: 各人の原文から後で埋める選択子の名前リスト（例 ["person_id","weekday"]）。
 - explanation: このレシピが何をするかの日本語の短い説明。
 - confidence: 0.0〜1.0。**上記の操作・選択子だけでは表現できない**と感じたら低くする。

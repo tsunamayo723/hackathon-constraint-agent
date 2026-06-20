@@ -37,6 +37,11 @@ from .validator import validate
 TIME_LIMIT_SEC = 10.0
 DEFAULT_SEED = 42
 
+# 通常シフトの形（全員一律の既定ルール）
+SHIFT_MIN_BLOCK_SLOTS = 6        # 1シフトの最低コマ数（30分×6＝3時間）
+SHIFT_MAX_BLOCKS_PER_DAY = 2     # 1日の出勤回数（連続ブロック数）の上限
+SHIFT_SHORT_BLOCK_PENALTY = 300  # 3時間未満ブロックの減点（不足5000より小さく＝どうしても解けない時は破る）
+
 
 def solve(
     spec: SolverInput,
@@ -95,6 +100,9 @@ def solve(
 
     # availability は全件出そろってから適用（枠外コマを0に固定）
     _apply_availability(ctx)
+
+    # 通常シフトの形（最低3時間＝soft / 1日2回まで＝hard）を全員一律で課す
+    _apply_shift_shape(ctx)
 
     # ── 目的関数 ────────────────────────────────────────────────
     # 必要人数の不足ペナルティ（最優先で小さく）＋ソフト罰金＋総割当数（過剰配置抑制）
@@ -219,6 +227,52 @@ def _apply_availability(ctx: SolverContext) -> None:
                 allowed = bool(windows) and any(slot.is_within(s, e) for (s, e) in windows)
                 if not allowed:
                     ctx.model.Add(ctx.present[(pid, di, slot.index)] == 0)
+
+
+def _apply_shift_shape(ctx: SolverContext) -> None:
+    """通常シフトの形を全員一律で課す（軽量版）。
+
+      - 1日の出勤回数（連続ブロック数）≤ SHIFT_MAX_BLOCKS_PER_DAY（Hard）
+        … 「1日に何回も入る」細切れを防ぐ。立ち上がり start[k] を数える。
+      - 出勤する日は合計 ≥ SHIFT_MIN_BLOCK_SLOTS コマ（3時間）（Soft・足りないと減点）
+        … 「通常シフトは3時間以上」。不足(5000)より小さい減点なので、
+          どうしても解けない時だけ破られる。
+
+    重いブロック長検出は避け、合計コマ数ベースにして高速化している。
+    """
+    model = ctx.model
+    n = len(ctx.slots)
+    for pid in ctx.person_ids:
+        for di in range(len(ctx.days)):
+            pres = [ctx.present[(pid, di, ctx.slots[k].index)] for k in range(n)]
+            wd = ctx.work_day[(pid, di)]
+
+            # ① 出勤日は合計3時間以上（soft）: 不足コマ数を減点
+            shortfall = model.NewIntVar(0, SHIFT_MIN_BLOCK_SLOTS, f"u3h_{pid}_{di}")
+            model.Add(shortfall >= SHIFT_MIN_BLOCK_SLOTS * wd - sum(pres))
+            ctx.add_penalty(SHIFT_SHORT_BLOCK_PENALTY, shortfall)
+
+            # ② 1日のブロック数 ≤ 上限（hard）: 立ち上がりの数で数える（細切れ防止＝連続性）
+            starts = []
+            for k in range(n):
+                st = model.NewBoolVar(f"start_{pid}_{di}_{k}")
+                if k == 0:
+                    model.Add(st == pres[0])
+                else:
+                    model.Add(st <= pres[k])
+                    model.Add(st <= 1 - pres[k - 1])
+                    model.Add(st >= pres[k] - pres[k - 1])
+                starts.append(st)
+            model.Add(sum(starts) <= SHIFT_MAX_BLOCKS_PER_DAY)
+
+            # ③ 1日は1ポジション（hard）: 30分ごとのポジション交代を防ぐ
+            pos_used = []
+            for pos_id in ctx.position_ids:
+                u = model.NewBoolVar(f"uses_{pid}_{di}_{pos_id}")
+                xs = [ctx.x[(pid, di, ctx.slots[k].index, pos_id)] for k in range(n)]
+                model.AddMaxEquality(u, xs)
+                pos_used.append(u)
+            model.Add(sum(pos_used) <= 1)
 
 
 def _extract_assignments(ctx: SolverContext, solver: cp_model.CpSolver) -> list[Assignment]:

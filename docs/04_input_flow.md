@@ -3,6 +3,11 @@
 *最終更新: 2026-05-27*
 *ステータス: 大枠確定、CSVスキーマ詳細は外部サービス流用待ち*
 
+> **⚠️ 注記（2026-06-20）**: 本書は初期の設計メモ。実装が進み一部は現状と異なる。
+> - 最新の入力UI（提出者の主役画面・デモデータ投入・日ごとnote翻訳）は **`docs/spec/10_submitter_ui.md`** が正。
+> - 備考(note)の3分類（✅時間補正/🆕新ルール候補/⚠️申し送り）は **`docs/spec/07_gemini_agents.md`**（NoteAgent節）が正。
+> - desired_shifts の `priority`（must/prefer/available）は**未実装**（出勤可能枠＝availabilityのみ採用）。
+
 ---
 
 ## 入力経路の全体像

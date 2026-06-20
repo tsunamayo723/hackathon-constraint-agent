@@ -344,6 +344,51 @@
 
 ---
 
+## 2026-06-18: 提出者の主役UI（T9）— React導入＋提出者プレビュー＋Flashチャット
+
+- **見せ方の転換**: 「全備考にAIが順番に話す」のは間延びする。デモは**1人の提出者**として
+  希望＋備考を出し、**note考慮あり/なし**を比較して「自分も店舗も要望が通った」を見せる体験にする。
+- **フロント = Vite + React + Tailwind**（`frontend/`）。提出者画面だけ操作感が要るためStreamlitをやめReact化。
+  裏方（CSVアップ・シフト実行・管理者承認）はStreamlit据え置き。CLAUDE.mdの「Streamlit確定/Next.js不要」を更新。
+  認証は作らずマスタからの選択で代用（不要な実装を持ち込まないルール準拠）。
+- **CORS**: React開発サーバー(:5173)からFastAPI(:8000)を叩けるよう `main.py` に許可を追加。
+- **ChatAgent（Flash・新規）**: 提出者の備考の曖昧さを対話で確認。`POST /chat/clarify-note`（ステートレス）。
+  確定時に**レシピ（操作×選択子）も直接出力**（単一人ルールはFlashで十分・安価。Proの`RecipeAgent`は
+  管理者の未知type設計に温存）。表現できない要望は `expressible=false` で正直に拒否。
+- **/submit/preview（新規・非破壊）**: 本人の希望で availability を差し替え、
+  `before=承認済みdynamicのみ` / `after=＋本備考レシピ` を解いて、本人差分＋店舗充足を返す。
+  既存 `preview-rule-effect` は承認済みtype専用のため流用不可と判明し、提出者用に新設。
+  レシピ検証は本人IDのままだと p1〜p3 シナリオで「対象が居ない」偽陰性になるため `person_id="p1"` で当てる。
+- **検証**: 全87テスト緑（chat 5件・submit 6件を追加）。フロントは `npm run build`（型チェック＋本番ビルド）通過。
+  実Geminiでのチャット品質はユーザーが画面で確認予定。
+- 詳細: `docs/spec/10_submitter_ui.md`、`docs/spec/07_gemini_agents.md`（ChatAgent節）。
+
+---
+
+## 2026-06-20: 提出体験の作り込み＋デモ運用の軽量化
+
+- **ポート統一**: Streamlit裏方6画面はすべて `:8001`、T9のReactは `:8000` を見ていて噛み合わず
+  「APIに接続できない」が出た。**FastAPIは:8001に統一**（フロント既定も `:8001` に修正）。
+- **日ごとnoteはAIが翻訳してソルバーに組み込む（誤解の訂正）**: 提出画面のメモを「表示だけ」に
+  しかけたが、これは肝の毀損。②CSV経路と同じ `NoteAgent`（✅時間補正/🆕新ルール候補/⚠️申し送り）を
+  `/submit/preview` で再利用する設計に。`before=生の希望`／`after=時間補正＋overall noteレシピ`。
+- **意見2（背骨）= 新種ルールnoteは即適用せず承認キューへ**: 提出者の「毎週水曜」等の新種は
+  `_register_note_pending` で管理者の承認キューへ流す（preview非破壊の例外として追記のみ実施）。
+  → 1つの提出体験から「note翻訳」と「未知→L2」が派生。提出者UI＝個人体験(Flash)、L2承認＝肝(Pro・承認ゲート)の**2幕**に分ける。
+- **「もたつき」の正体**: ソルバー速度ではなく**提出者が30日分も手入力する負担**。→ デモを
+  **10人×10日×3パターン**にコンパクト化（`data/demo/`・`scripts/gen_demo_data.py`で生成）。
+- **ワンクリック投入**: `GET /setup/demo-patterns`＋`POST /setup/load-demo`（一括登録）。Streamlit①に
+  プルダウン追加。提出者UIは `GET /submit/demo-wishes` で「デモ希望読込／自分で記入」を選択可。
+- **提出カレンダー作り直し**: プリセット＋**開始終了を30分刻みで指定**＋**日ごとメモ**。結果画面に
+  AIの備考解釈（✅🆕⚠️）を表示。
+- **品質チェックルールを明文化**: アウトプット前にセルフチェック→問題は告知の上で承認不要で再検証
+  （CLAUDE.md「アウトプット品質チェック」）。
+- **検証**: 全93テスト緑（demo-load 6件追加）。フロント `npm run build` 通過。
+  デモデータは `scripts/verify_demo_data.py` でソルバー実測（3パターンとも 水曜before/after・店舗不足0）をPASS。
+- 詳細: `docs/spec/10_submitter_ui.md`（全面更新）。
+
+---
+
 ## 今後追記用フォーマット
 
 ```markdown

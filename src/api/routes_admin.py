@@ -91,22 +91,44 @@ def get_pending(req_id: str) -> PendingTypeRequest:
         "結果（レシピ・検証合否）はこのリクエストに格納され、承認画面で確認できます。"
     ),
 )
-def generate_handler(req_id: str):
+def generate_handler(req_id: str, feedback: str = ""):
     from src.agents import RecipeAgent
     from src.solver.recipe import validate_recipe
 
     req = get_pending_request(req_id)
     if not req:
         raise HTTPException(status_code=404, detail=f"見つかりません: {req_id}")
+
+    # ②のチャットが既にレシピを設計済み & 再生成でないなら、Proを呼ばず検証だけ。
+    # ＝必要情報は②で引き切る構造。④での再質問・Pro待ちが無くなる。
+    if req.suggested_recipe and not feedback.strip():
+        ok, msg = validate_recipe(req.tested_params or req.suggested_recipe)
+        req.expressible = True
+        req.reject_category = None
+        req.confidence = 0.9
+        req.test_results = TestResult(
+            passed=ok, total=1, passed_count=1 if ok else 0,
+            failed_cases=[] if ok else [msg], detail=msg,
+        )
+        update_pending_request(req)
+        return {
+            "結果": "②で設計済みのレシピを検証しました",
+            "タイプ名": req.suggested_type_name,
+            "表現可能": True,
+            "テスト": "合格" if ok else f"不合格（{msg}）",
+            "自信度": req.confidence,
+            "レシピ": req.suggested_recipe,
+        }
+
     if not llm.is_available():
         raise HTTPException(
             status_code=400,
             detail="Gemini未設定のため生成できません（.env の GEMINI_API_KEY を設定してください）。",
         )
 
-    # ① Pro でレシピ（操作×選択子）を設計
+    # ① Pro でレシピ（操作×選択子）を設計（feedback は再生成時の管理者の補足）
     try:
-        gen = RecipeAgent().generate(req)
+        gen = RecipeAgent().generate(req, feedback=feedback)
     except Exception as exc:
         logger.exception("レシピ生成に失敗")
         raise HTTPException(status_code=502, detail=f"レシピ生成に失敗しました: {exc}")

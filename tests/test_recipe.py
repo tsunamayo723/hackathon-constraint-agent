@@ -170,3 +170,38 @@ def test_prefer_pulls_person_in():
     # preferが効けば p2 がランチに入る日数が多い（全日入る想定）
     p2_lunch = sum(solver.Value(ctx.present[("p2", di, li)]) for di in range(len(ctx.days)))
     assert p2_lunch == len(ctx.days)
+
+
+# ── rest_after_late（前日遅番→翌日休み・逐次条件） ───────────────────
+
+def test_rest_after_late_adds_penalty_per_pair():
+    """連続する日のペアごとに罰金が1つ足される。"""
+    ctx = _ctx(persons=2)
+    before = len(ctx.penalties)
+    apply_recipe({"operation": "rest_after_late", "who": "person", "person_id": "p1",
+                  "band": "window", "time_start": "18:00", "time_end": "22:00", "weight": 600}, ctx)
+    assert len(ctx.penalties) - before == len(ctx.days) - 1
+
+
+def test_rest_after_late_frees_next_day():
+    """初日に遅番を強いられた p1 は、翌日はお休みになる。"""
+    ctx = _ctx(persons=2)
+    # 遅番(18-22)・昼(11-12)を毎日1名必要
+    apply_recipe({"operation": "require", "who": "all", "band": "window",
+                  "time_start": "18:00", "time_end": "22:00",
+                  "where": "position", "position_id": "pos_hall", "count": 1}, ctx)
+    apply_recipe(_require_lunch(count=1), ctx)
+    # 初日(11/2)の遅番は p2 を不可 → 初日遅番は p1 が担当
+    apply_recipe({"operation": "forbid", "who": "person", "person_id": "p2",
+                  "when": "date", "date": date(2026, 11, 2),
+                  "band": "window", "time_start": "18:00", "time_end": "22:00"}, ctx)
+    # p1: 前日が遅番なら翌日は休み（強め）
+    apply_recipe({"operation": "rest_after_late", "who": "person", "person_id": "p1",
+                  "band": "window", "time_start": "18:00", "time_end": "22:00", "weight": 1000}, ctx)
+    solver = _solve(ctx)
+
+    di0 = next(di for di, d in enumerate(ctx.days) if d == date(2026, 11, 2))
+    di1 = next(di for di, d in enumerate(ctx.days) if d == date(2026, 11, 3))
+    late = _slot_index(ctx, "18:00")
+    assert solver.Value(ctx.present[("p1", di0, late)]) == 1   # 初日は p1 が遅番
+    assert solver.Value(ctx.work_day[("p1", di1)]) == 0        # 翌日は休み

@@ -83,6 +83,33 @@ def test_forbid_weekday_removes_that_day():
     assert sum(solver.Value(ctx.present[(p, di_wed, li)]) for p in ctx.person_ids) >= 1
 
 
+def test_forbid_weekday_list_removes_weekend():
+    """weekday を配列（[5,6]=土日）で渡すと土日の両方が不可になる（「週末は入れません」）。"""
+    ctx = _ctx()
+    apply_recipe(_require_lunch(count=1), ctx)
+    apply_recipe({"operation": "forbid", "who": "person", "person_id": "p1",
+                  "when": "weekday", "weekday": [5, 6], "band": "all_day"}, ctx)
+    solver = _solve(ctx)
+
+    li = _slot_index(ctx, "11:00")
+    for d in (date(2026, 11, 7), date(2026, 11, 8)):   # 土・日
+        di = next(i for i, dd in enumerate(ctx.days) if dd == d)
+        assert solver.Value(ctx.work_day[("p1", di)]) == 0                               # p1は入らない
+        assert sum(solver.Value(ctx.present[(p, di, li)]) for p in ctx.person_ids) >= 1  # 穴は開かない
+
+
+def test_forbid_weekday_zero_monday():
+    """weekday=0（月曜・Python的にfalsyな値）でも単一intが正しくリスト化され、月曜が不可になる。"""
+    ctx = _ctx()
+    apply_recipe(_require_lunch(count=1), ctx)
+    apply_recipe({"operation": "forbid", "who": "person", "person_id": "p1",
+                  "when": "weekday", "weekday": 0, "band": "all_day"}, ctx)
+    solver = _solve(ctx)
+
+    di_mon = next(i for i, d in enumerate(ctx.days) if d == date(2026, 11, 2))
+    assert solver.Value(ctx.work_day[("p1", di_mon)]) == 0
+
+
 # ── require（headcount_requirement） ─────────────────────────────────
 
 def test_require_fills_count():

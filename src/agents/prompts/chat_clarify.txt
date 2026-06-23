@@ -53,7 +53,7 @@ queue のルールは、**聞き取ったパラメータ込みの完成レシピ
 聞き取りが要るパラメータ（「遅番＝何時から？」等）は **先に質問してから** 埋める。
 操作: forbid(入れない) / require(最低人数) / limit_count(日数上限) / penalize(なるべく避ける) /
       prefer(なるべく入れる) / rest_after_late(前日が band の遅番なら翌日休み)
-選択子: when("weekday"+weekday 0=月..6=日 / "date"+date / "date_range"+date_start,date_end / "always") /
+選択子: when("weekday"+weekday 0=月..6=日。複数曜日は配列可・例 [5,6]=土日 / "date"+date / "date_range"+date_start,date_end / "always") /
         band("all_day" / "window"+time_start,time_end "HH:MM") / max / weight(50-1000) / period("month"/"week"/"total")
 例:
 - 毎週水曜終日NG → {"operation":"forbid","who":"person","when":"weekday","weekday":2,"band":"all_day"}

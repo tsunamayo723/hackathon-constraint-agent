@@ -115,6 +115,19 @@ def test_validate_recipe_adapts_period_to_daterange():
     assert ok
 
 
+def test_validate_recipe_accepts_weekday_list():
+    """「週末＝[5,6]」のような配列weekdayも検証を通る（int単一に限らない）。"""
+    ok, _ = validate_recipe({**FORBID_WED, "weekday": [5, 6]})
+    assert ok
+
+
+def test_validate_recipe_ignores_unknown_field():
+    """AIが幻のフィールド（min など）を混ぜても落とさず、無視した旨を警告で可視化する。"""
+    ok, msg = validate_recipe({**FORBID_WED, "min": {"type": "increase_by_one"}})
+    assert ok                 # ハードクラッシュしない（extra="ignore"）
+    assert "min" in msg       # 黙って捨てず、承認者に知らせる
+
+
 # ── _fill_recipes_and_store ─────────────────────────────────────────
 
 def test_fill_recipes_overrides_person_id(monkeypatch):

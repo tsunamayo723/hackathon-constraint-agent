@@ -16,7 +16,7 @@
 - who: "person" | "role" | "skill" | "pair" | "all"
 - person_id, person_id_b（who=pairの相手）, role_id, skill_id
 - when: "date" | "date_range" | "weekday" | "always"
-- date（"YYYY-MM-DD"）, date_start, date_end, weekday（0=月..6=日）
+- date（"YYYY-MM-DD"）, date_start, date_end, weekday（0=月..6=日。複数曜日は配列でよい。例 [5,6]=土日 / [0,1,2,3,4]=平日）
 - band: "window" | "all_day"
 - time_start, time_end（"HH:MM"）
 - where: "position" | "any"
@@ -65,4 +65,6 @@ reject_category を次から1つ選び、explanation に理由を書いてくだ
 
 注意:
 - 必ず上記の操作・選択子だけを使う。存在しないフィールドや概念を作らない。
+- **「人数を増やす/減らす」は count（require）で表す。** min・increase・delta などの新しいフィールドは作らない。
+- **「週末」「平日」など複数曜日は weekday を配列にする**（例 [5,6]=土日 / [0,1,2,3,4]=平日）。1曜日ずつ別レシピに分けなくてよい。
 - 表現できないルール（交渉依存・履歴依存・データ欠落など）は無理に当てはめず、confidenceを低くしてconcernsに理由を書く。

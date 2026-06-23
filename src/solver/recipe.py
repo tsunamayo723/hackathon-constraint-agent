@@ -35,7 +35,7 @@ AIに生のPythonを書かせる代わりに、安全な「操作＋選択子」
 from datetime import date
 from typing import Literal, Optional
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, field_validator
 
 from src.solver.context import SolverContext
 from src.solver.slots import hhmm_to_min
@@ -50,7 +50,10 @@ SHORTAGE_PENALTY = 5000
 class Recipe(BaseModel):
     """1ルール＝1操作＋選択子。AIはこの形（データ）を出すだけでよい。"""
 
-    model_config = ConfigDict(extra="forbid")
+    # AIが想定外のフィールド（幻の min など）を混ぜても落とさず無視する。
+    # インタプリタは既知フィールドしか読まないので無視しても安全。
+    # （承認時に validate_recipe が「無視したフィールド」を警告として可視化する＝黙って捨てない）
+    model_config = ConfigDict(extra="ignore")
 
     operation: Literal["forbid", "require", "limit_count", "penalize", "prefer", "rest_after_late"]
 
@@ -66,7 +69,7 @@ class Recipe(BaseModel):
     date: Optional[DateType] = None
     date_start: Optional[DateType] = None
     date_end: Optional[DateType] = None
-    weekday: Optional[int] = None          # 0=月 .. 6=日
+    weekday: Optional[list[int]] = None    # 0=月 .. 6=日（単一intも配列も受ける。内部では常にリスト）
 
     # 時間帯 band
     band: Literal["window", "all_day"] = "all_day"
@@ -82,6 +85,17 @@ class Recipe(BaseModel):
     max: Optional[int] = None              # limit_count の上限
     weight: int = 500                      # soft操作の罰金
     period: Literal["total", "week", "month"] = "total"  # limit_count の期間
+
+    @field_validator("weekday", mode="before")
+    @classmethod
+    def _weekday_to_list(cls, v):
+        """weekday は単一int（例 2=水）でも配列（例 [5,6]=土日）でも受け、内部では常にリストにそろえる。
+
+        AIは「週末は…」を weekday=[5,6] のようにリストで出すことがある。単一intなら [int] に包む。
+        """
+        if v is None or isinstance(v, list):
+            return v
+        return [v]
 
 
 def _clip_weight(w: int) -> int:
@@ -104,6 +118,10 @@ def validate_recipe(recipe: dict) -> tuple[bool, str]:
         r = Recipe.model_validate(recipe)
     except Exception as exc:
         return False, f"レシピの形式エラー: {exc}"
+
+    # スキーマに無いキー（AIの幻フィールド）は extra="ignore" で無視されるが、
+    # 黙って捨てると「分かったフリ」になるので、承認者に見えるよう控えておく。
+    unknown_keys = [k for k in recipe if k not in Recipe.model_fields] if isinstance(recipe, dict) else []
 
     from datetime import date as _date
     from datetime import timedelta
@@ -164,7 +182,10 @@ def validate_recipe(recipe: dict) -> tuple[bool, str]:
 
     if after <= before:
         return False, "このレシピは制約を1つも生みませんでした（選択子が空・対象が居ない可能性）"
-    return True, "レシピを検証シナリオに適用できました（制約が生成されました）"
+    msg = "レシピを検証シナリオに適用できました（制約が生成されました）"
+    if unknown_keys:
+        msg += f"。⚠️ スキーマに無いフィールドは無視しました: {', '.join(unknown_keys)}"
+    return True, msg
 
 
 # ── 選択子の解決 ────────────────────────────────────────────────────
@@ -191,7 +212,7 @@ def _matching_day_indices(r: Recipe, ctx: SolverContext) -> list[int]:
     for di, day in enumerate(ctx.days):
         if r.when == "always":
             out.append(di)
-        elif r.when == "weekday" and r.weekday is not None and day.weekday() == r.weekday:
+        elif r.when == "weekday" and r.weekday and day.weekday() in r.weekday:
             out.append(di)
         elif r.when == "date" and r.date is not None and day == r.date:
             out.append(di)

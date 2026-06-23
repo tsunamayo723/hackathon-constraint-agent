@@ -389,6 +389,24 @@
 
 ---
 
+## 2026-06-23: レシピのライブ堅牢化＋永続化の差し替え土台（T5）
+
+- **レシピのライブ堅牢化**: 実Geminiが選択子を揺れた形で出してもデモが落ちないよう構造的に吸収。
+  `Recipe.weekday` を `int|list[int]` 受け（「週末＝[5,6]」が通る）、`extra="forbid"→"ignore"`（幻フィールド
+  `min`等で落ちない・`validate_recipe` が無視を承認時に警告で可視化）。実Geminiで[5,6]出力→検証合格を確認。
+- **永続化の差し替え土台（T5・接続情報はまだ無い）**: `src/persistence.py` に `StateStore`（InMemory/Supabase）を置き、
+  `storage.py` を**公開関数を変えずに** `_store` 越しへ配線。Supabaseキーが揃えば自動切替（無ければInMemoryにフォールバック）。
+  - 配線済み（永続化対象）: dynamic_constraints / manager_questions / availability / policy_constraints /
+    base_headcounts / note_results / demo_meta / shift_status（JSONネイティブ）。
+  - 据え置き: pending_queue / masters / frame（Pydantic直列化＋テスト直参照のため、実DB接続フェーズで移す）。
+  - テーブル定義 `db/schema.sql`（単一 `app_state(key,value jsonb)`）。RLSは使わない（単一店舗・service_role）。
+- **理由**: Supabaseプロジェクト未作成で実DB検証ができず、方針も「T5はT6デプロイとセット」。
+  そこで**ブロックされない土台**を先に作り、キー到着で即切替できる状態にした。
+- **影響範囲**: storage公開APIは不変→ルート/テスト無改修。全105テスト緑（レシピ+4・persistence+4）。
+- 詳細: `docs/spec/11_persistence.md`、`docs/spec/09_recipe_primitives.md`（堅牢性節）。
+
+---
+
 ## 今後追記用フォーマット
 
 ```markdown

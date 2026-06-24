@@ -407,6 +407,24 @@
 
 ---
 
+## 2026-06-24: Supabase 本接続（T5の実DB化）
+
+- **決定**: T5土台に実Supabaseを接続し、**アプリ公開関数経由でJSONBを永続化できる状態**にした。
+  `storage.save_dynamic_constraints` 等が `app_state(key, value jsonb)` に書き込み→読み戻すのを実機確認。
+  審査員が Table Editor で「AIが生成した typed JSON」を直接見られる＝デモの説得材料が1つ増えた。
+- **やったこと**: `.env` に Project URL＋秘密鍵を設定／`db/schema.sql` 実行でテーブル作成／
+  `supabase` パッケージ導入（pyprojectに宣言済みだったが環境に未導入）／
+  **`tests/conftest.py` 新規**＝全テストを毎回 `InMemoryStore` に固定し**実DBを汚さない**。
+- **つまずき所（備忘）**: ①URLは Project URL（`https://<ref>.supabase.co`）。ダッシュボードのページURLを
+  貼ると404(HTML)。②鍵は秘密鍵（`sb_secret_…`）を `SUPABASE_SERVICE_ROLE_KEY` 名で
+  （`ANON`名は「公開可」と誤解しやすいので回避）。③`PGRST205`=テーブル未作成のサイン。
+- **据え置き（T6前）**: pending_queue / masters / frame の model_dump 配線、manager_question 更新口、
+  Cloud Run への Secret 注入。理由: 再起動耐性が本当に要るのはデプロイ時で、接続成立を先に確定したかった。
+- **影響範囲**: storage 公開APIは不変。`tests/conftest.py` 追加のみでテスト挙動は安全側に。全105テスト緑。
+- 詳細: `docs/spec/11_persistence.md`（本接続済み節）。
+
+---
+
 ## 今後追記用フォーマット
 
 ```markdown

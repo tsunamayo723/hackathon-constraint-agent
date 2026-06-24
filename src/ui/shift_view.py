@@ -10,8 +10,7 @@ import requests
 import streamlit as st
 
 from _shift_table import render_shift_table
-
-API_URL = "http://localhost:8001"
+from _api_config import API_URL
 
 try:
     st.set_page_config(page_title="シフト確認", page_icon="📅", layout="wide")

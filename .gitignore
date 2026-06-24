@@ -56,8 +56,7 @@ logs/
 htmlcov/
 .tox/
 
-# Google Cloud
-.gcloudignore
+# Google Cloud（.gcloudignore は秘密でなくデプロイ設定なので追跡する）
 gha-creds-*.json
 service-account-*.json
 

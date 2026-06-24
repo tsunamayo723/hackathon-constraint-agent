@@ -1,0 +1,14 @@
+# Cloud Run / Docker 用の実行時依存（pyproject.toml の dependencies と一致させる）。
+# ローカル開発は `pip install -e .[dev]` を推奨。これは本番イメージ向けの最小実行時依存。
+#
+# 注: 簡潔さ優先で API/Streamlit 両イメージがこの1ファイルを使う（streamlit/ortools 両方入る）。
+#     イメージを絞りたくなったら API用 / UI用 に分割してよい（deploy/README.md 参照）。
+pydantic>=2.7
+ortools>=9.10
+google-genai>=1.0
+fastapi>=0.115
+uvicorn[standard]>=0.30
+streamlit>=1.40
+supabase>=2.5
+python-dotenv>=1.0
+requests>=2.32

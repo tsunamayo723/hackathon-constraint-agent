@@ -6,6 +6,8 @@
   - routes_admin.py  … サイト管理者の承認キュー
 """
 
+import os
+
 from fastapi import Body, FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import HTMLResponse
@@ -115,13 +117,18 @@ app = FastAPI(
 )
 
 # React開発サーバー(Vite)からのアクセスを許可する（CORS）。
-# 本番(T6)で配信元が決まったら origin を追加する。
+# 本番(T6)の配信元は環境変数 ALLOWED_ORIGINS（カンマ区切り）で追加する。
+#   例: ALLOWED_ORIGINS="https://my-react.web.app,https://example.com"
+# ※ Streamlit→API はサーバ間呼び出しなので CORS 不要。対象はブラウザで動くReactだけ。
+_default_origins = [
+    "http://localhost:5173", "http://127.0.0.1:5173",  # Vite 既定
+    "http://localhost:3000", "http://127.0.0.1:3000",
+]
+_extra_origins = [o.strip() for o in os.environ.get("ALLOWED_ORIGINS", "").split(",") if o.strip()]
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[
-        "http://localhost:5173", "http://127.0.0.1:5173",  # Vite 既定
-        "http://localhost:3000", "http://127.0.0.1:3000",
-    ],
+    allow_origins=_default_origins + _extra_origins,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],

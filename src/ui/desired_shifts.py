@@ -12,7 +12,7 @@ import pandas as pd
 import requests
 import streamlit as st
 
-API_URL = "http://localhost:8001"
+from _api_config import API_URL
 
 try:
     st.set_page_config(page_title="出勤希望CSV", page_icon="🗓️", layout="centered")

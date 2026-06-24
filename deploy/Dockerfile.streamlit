@@ -1,0 +1,17 @@
+# 制約管理エージェント — Streamlit 裏方UI（Cloud Run 用）
+#
+# Streamlit は FastAPI を API_URL（環境変数）経由で呼ぶ。
+# localhost ではなく、**デプロイした FastAPI サービスのURL** を Cloud Run の環境変数で渡すこと。
+FROM python:3.12-slim
+
+WORKDIR /app
+
+COPY requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
+
+COPY src ./src
+COPY data ./data
+
+ENV PORT=8080
+# Cloud Run 向け: 0.0.0.0 / $PORT / headless で待ち受ける
+CMD streamlit run src/ui/app.py --server.port=$PORT --server.address=0.0.0.0 --server.headless=true

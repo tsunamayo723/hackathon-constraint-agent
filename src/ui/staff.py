@@ -15,7 +15,7 @@ CSV（経路A:マスタ / 経路B:出勤希望）では表せない
 import requests
 import streamlit as st
 
-API_URL = "http://localhost:8001"
+from _api_config import API_URL
 
 # ── ページ設定 ─────────────────────────────────────────────────────────
 # app.py（マルチページ入口）から読み込まれた場合は既に設定済みなので無視する

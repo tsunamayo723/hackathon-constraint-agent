@@ -1,0 +1,28 @@
+# Docker build context を小さく・安全にする（イメージに不要/危険なものを除外）
+.git
+.gitignore
+.venv
+venv
+env
+ENV
+__pycache__
+*.pyc
+*.pyo
+.pytest_cache
+.coverage
+htmlcov
+
+# 秘密情報は絶対にイメージへ入れない（Cloud Run の環境変数/Secret で注入する）
+.env
+.env.*
+
+# フロントの依存・ビルド成果物は不要
+frontend/node_modules
+frontend/dist
+
+# ドキュメント・テスト・スクリプトは実行時不要
+docs
+tests
+scripts
+*.md
+.streamlit/secrets.toml

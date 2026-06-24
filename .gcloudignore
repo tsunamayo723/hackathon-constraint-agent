@@ -1,0 +1,25 @@
+# Cloud Build にアップロードするソースから除外するもの（ビルドに不要・秘密情報）。
+# 注意: deploy/（Dockerfile）, src/, data/, requirements.txt は **除外しない**（ビルドに必要）。
+.git
+.venv
+venv
+env
+ENV
+__pycache__
+*.pyc
+.pytest_cache
+.coverage
+
+# 秘密情報（Secret Manager / 環境変数で注入する）
+.env
+.env.*
+
+# フロントの依存・成果物
+frontend/node_modules
+frontend/dist
+
+# 実行時不要
+tests
+docs
+scripts
+.streamlit/secrets.toml

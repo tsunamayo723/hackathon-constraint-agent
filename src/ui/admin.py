@@ -14,8 +14,7 @@ import requests
 import streamlit as st
 
 from _shift_table import render_shift_table
-
-API_URL = "http://localhost:8001"
+from _api_config import API_URL
 
 # app.py から読み込まれた場合は設定済みなので無視
 try:

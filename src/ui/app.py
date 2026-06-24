@@ -14,7 +14,7 @@ import streamlit as st
 # 全画面共通のページ設定（最初の1回だけ。各画面側はガードして二重設定を避けている）
 st.set_page_config(page_title="制約管理エージェント", page_icon="🤖", layout="centered")
 
-API_URL = "http://localhost:8001"
+from _api_config import API_URL
 
 # デモの流れと同じ並び：設定 → 出勤希望 → 要望 → 計算 → 承認
 # st.Page のパスは、この app.py があるディレクトリ（src/ui/）からの相対パス

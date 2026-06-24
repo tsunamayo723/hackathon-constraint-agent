@@ -1,0 +1,13 @@
+# Streamlit イメージをビルドして Artifact Registry に push する（ローカル Docker 不要）。
+# 使い方（PROJECT_ID は自分のものに）:
+#   gcloud builds submit --config deploy/cloudbuild.streamlit.yaml \
+#     --substitutions=_IMAGE=asia-northeast1-docker.pkg.dev/PROJECT_ID/constraint-agent/streamlit:latest .
+steps:
+  - name: gcr.io/cloud-builders/docker
+    args: ['build', '-f', 'deploy/Dockerfile.streamlit', '-t', '${_IMAGE}', '.']
+  - name: gcr.io/cloud-builders/docker
+    args: ['push', '${_IMAGE}']
+images:
+  - '${_IMAGE}'
+substitutions:
+  _IMAGE: 'asia-northeast1-docker.pkg.dev/PROJECT_ID/constraint-agent/streamlit:latest'

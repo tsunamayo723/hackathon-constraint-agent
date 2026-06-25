@@ -10,7 +10,8 @@ import os
 
 from fastapi import Body, FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import HTMLResponse
+from fastapi.responses import HTMLResponse, RedirectResponse
+from fastapi.staticfiles import StaticFiles
 from pydantic import TypeAdapter, ValidationError
 
 from src.models import (
@@ -142,10 +143,11 @@ app.include_router(chat_router)
 app.include_router(submit_router)
 
 
-# ── トップページ ────────────────────────────────────────────────────
+# ── システム説明ページ（/about）─────────────────────────────────────
+# 本番では "/" を React 提出者UI が占有するため、システム説明はここに置く。
 
-@app.get("/", response_class=HTMLResponse, include_in_schema=False)
-def root():
+@app.get("/about", response_class=HTMLResponse, include_in_schema=False)
+def about():
     return """
     <html>
     <head>
@@ -187,6 +189,7 @@ def root():
       未知タイプが自動で管理者キューに登録されているのが確認できます。</p>
 
       <a class="btn" href="/docs">📄 APIドキュメントを開く（Swagger UI）</a>
+      <a class="btn" href="/">🎯 提出者UI（メイン画面）へ</a>
     </body>
     </html>
     """
@@ -356,3 +359,21 @@ def validate_solver_input(body: dict = Body(openapi_examples=_solver_input_examp
         }
     except ValidationError as e:
         raise HTTPException(status_code=422, detail=e.errors())
+
+
+# ── React 提出者UI（本番は FastAPI に同梱して "/" で配信）──────────────
+# ビルド済みフロント（frontend_dist/）が在れば "/" に静的マウントする。
+#   ・本番(Cloud Run): Dockerfile.api が React をビルドして frontend_dist/ を同梱 → "/" がReact画面
+#   ・ローカル開発:    dist が無い → マウントせず、"/" は説明ページ /about へ誘導
+#                     （開発時の提出者UIは Vite の :5173 を別途使う）
+# ※ このマウントは全ルーター登録の "後" に置く＝API窓口や /docs を邪魔しない（"/" は最後の受け皿）。
+_FRONTEND_DIST = os.path.normpath(
+    os.path.join(os.path.dirname(__file__), "..", "..", "frontend_dist")
+)
+if os.path.isdir(_FRONTEND_DIST):
+    app.mount("/", StaticFiles(directory=_FRONTEND_DIST, html=True), name="frontend")
+else:
+    @app.get("/", include_in_schema=False)
+    def _dev_root():
+        # ビルド済みフロントが無い開発時は、説明ページへ誘導する。
+        return RedirectResponse("/about")

@@ -23,3 +23,7 @@ tests
 docs
 scripts
 .streamlit/secrets.toml
+
+# 外部サービス への言及がある設定/説明ファイル。ビルドに不要なので
+# 一時アップロード(Cloud Build)からも除外し、外に出さない。
+CLAUDE.md

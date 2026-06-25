@@ -1,10 +1,27 @@
-# 制約管理エージェント — FastAPI バックエンド（Cloud Run 用）
+# 制約管理エージェント — FastAPI バックエンド + React提出者UI（Cloud Run 用）
 #
-# build context は **リポジトリ直下**（src/ data/ を COPY するため）。
+# build context は **リポジトリ直下**（frontend/ src/ data/ を参照するため）。
 #   gcloud builds submit --config deploy/cloudbuild.api.yaml ... .
 # Cloud Run は環境変数 PORT（既定 8080）で待ち受ける必要がある。
-FROM python:3.12-slim
+#
+# 多段（マルチステージ）ビルド:
+#   ① Node の箱で React(frontend/) を組み立て、完成した静的ファイル dist/ を作る
+#   ② Python の箱に「dist/ だけ」を移し、FastAPI から同一オリジンで配信する
+#      （Nodeの道具は②に持ち込まない＝箱が軽い・起動が速い・安い）
 
+# ── ① React 提出者UI をビルド ───────────────────────────────────────
+FROM node:20-slim AS frontend-build
+WORKDIR /build
+# 依存だけ先に入れてレイヤキャッシュを効かせる
+COPY frontend/package.json frontend/package-lock.json ./
+RUN npm ci
+# ソース一式を入れてビルド。同梱配信なので API は同一オリジン（相対パス）= 空文字。
+COPY frontend/ ./
+ENV VITE_API_BASE=""
+RUN npm run build      # → /build/dist（静的ファイル一式）
+
+# ── ② FastAPI 本体（①の dist だけ受け取る）─────────────────────────
+FROM python:3.12-slim
 WORKDIR /app
 
 # 依存を先に入れてレイヤキャッシュを効かせる
@@ -14,6 +31,9 @@ RUN pip install --no-cache-dir -r requirements.txt
 # アプリ本体（プロンプト *.txt も src 配下に含まれる）とデモデータ
 COPY src ./src
 COPY data ./data
+
+# React の完成ファイル（静的）だけをコピー。main.py が "/" で配信する。
+COPY --from=frontend-build /build/dist ./frontend_dist
 
 ENV PORT=8080
 # シェル形式にして $PORT を展開する（Cloud Run が注入）

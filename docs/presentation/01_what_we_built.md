@@ -65,7 +65,7 @@
 | 承認→自動再計算（ループ完成） | ✅ 動作中 | 承認→原文をparams化→再計算で反映。before/after差分で「水曜が消えた」を表示（T2） |
 | ハンドラ網羅（残り13type） | 🔜 中盤 | 「複雑な要件を完全充足」の根拠づくり（T3） |
 | Supabase 永続化（DB） | ✅ 接続済み | AIが生成した typed JSON を `app_state` の JSONB 列に保存。**Table Editorで中身を直接閲覧可**（T5・6/24本接続） |
-| クラウドデプロイ | 🔜 最終 | Google Cloud Run ×2（FastAPI / Streamlit）（T6） |
+| クラウドデプロイ | 🔜 最終 | Google Cloud Run ×2（**api**＝FastAPI＋React提出者UI同梱 / **streamlit**＝裏方）。提出者UIはAPIと**同一URL**で配信＝CORS不要（T6・配信方式(b)確定6/25） |
 
 > **2026-06-10 達成①（T1）**: **CSVの備考欄からも未知ルールを検出**。
 > 「毎週水曜は習い事で入れません」「毎週水曜は大学の授業があります」という**別々の言い回し**を

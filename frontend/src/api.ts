@@ -1,10 +1,12 @@
 // FastAPI バックエンドへの薄いラッパ。
 // 開発時は http://localhost:8001（Streamlit裏方と同じFastAPIを共有）。
-// 本番(T6)では VITE_API_BASE で差し替える。
+// 本番(T6)では VITE_API_BASE で差し替える（FastAPI同梱なら "" ＝同一オリジンの相対パス）。
 
 import type { ChatMessage, ChatTurn, DemoWishes, Frame, Masters, NoteResultItem, PreviewResult, SideResult } from "./types"
 
-const API = (import.meta.env.VITE_API_BASE as string) || "http://localhost:8001"
+// 未指定(undefined)のときだけローカル既定にフォールバックする。
+// 同梱配信では VITE_API_BASE="" を渡す＝同一オリジンの相対パス。"" を尊重するため || ではなく ?? を使う。
+const API = (import.meta.env.VITE_API_BASE as string | undefined) ?? "http://localhost:8001"
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const res = await fetch(API + path, {

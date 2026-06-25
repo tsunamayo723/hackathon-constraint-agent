@@ -1,5 +1,8 @@
 # Cloud Run デプロイ手順（T6）
 
+> ✅ **2026-06-25 本番デプロイ済み**: `https://api-1070955982939.asia-northeast1.run.app`
+> （`api` のみ＝FastAPI＋React同梱。Streamlit裏方は今回は出さず、デモはReact同梱UIで完結。以下は手順の記録／再デプロイ用）
+
 FastAPI と Streamlit を **Cloud Run ×2** に出す手順。DBは **Supabase（接続済み）**、
 秘密情報は **Secret Manager** で注入する。コマンドは **PowerShell**（行継続は `` ` ``）。
 

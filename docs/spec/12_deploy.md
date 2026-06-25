@@ -1,6 +1,8 @@
 # 仕様書 12 — デプロイ（Cloud Run ×2）の下ごしらえ
 
-*最終更新: 2026-06-25（React配信方法を (b) FastAPI同梱に決定し、Dockerfile.api を多段ビルド化。実デプロイは未実施）*
+*最終更新: 2026-06-25（(b)FastAPI同梱で **api を Cloud Run に本番デプロイ完了・稼働中**。React/Gemini/Supabase すべて本番で疎通確認済み）*
+
+> ✅ **本番URL: https://api-1070955982939.asia-northeast1.run.app**（`/`=React提出者UI / `/about`=説明 / `/docs`=Swagger）
 
 ---
 
@@ -44,4 +46,8 @@ deploy/
 1. ✅ **React の配信方法 = (b) FastAPI同梱に決定**（2026-06-25）。`"/"`がReact、`/about`が説明、`/docs`がSwagger。
    **同一オリジンなので React 用の CORS は不要**（`ALLOWED_ORIGINS` は将来の別ホスティング用に残置）。
 2. 据え置き永続化3バケット（pending_queue/masters/frame）の本配線（[[11_persistence]]）。
-3. 実デプロイ（ビルド→デプロイ→疎通）と提出物（URL・READMEなど）。Cloud Run は **api / streamlit の2サービス**（Reactは api に同梱）。
+3. ✅ **本番デプロイ完了（2026-06-25）**。Cloud Run サービス `api`（FastAPI＋React同梱）を東京に公開。
+   - **本番URL: https://api-1070955982939.asia-northeast1.run.app**
+   - 検証済み: React配信（`/`＋`/assets/*.js`）・Gemini解析（クラウドで既知変換＋未知検出）・Supabase書き込み（クラウド→共有DB着弾を実証）。
+   - 秘密は Secret Manager 注入（GEMINI_API_KEY / SUPABASE_URL / SUPABASE_SERVICE_ROLE_KEY）、runtime SA に `secretAccessor` 付与済み。
+   - **Streamlit裏方は今回は出さない**（デモはReact内で承認まで完結するため）。必須要件のGCP実行プロダクトは `api`(Cloud Run) で充足。

@@ -101,17 +101,14 @@ if st.button("🧮 シフトを計算する", type="primary"):
         else:
             st.success("✅ **確定版**シフト（すべての要望を反映）")
 
-        # ── 充足スコア（100点満点・分かりやすい評価） ────────────
+        # ── 必要人数の充足（スコアは廃止し、不足の有無を平易に表示） ──
         meta = out.get("meta") or {}
-        score = meta.get("coverage_score", 100.0)
-        st.metric(
-            "🎯 充足スコア（100点満点）", f"{score} 点",
-            help="必要人数をどれだけ満たせたか＝(必要−不足)/必要×100。100点＝全ブロック充足。",
-        )
-        sc1, sc2, sc3 = st.columns(3)
-        sc1.metric("必要人数（計）", meta.get("required_units", "?"), help="必要だった人数の合計（コマ単位）")
-        sc2.metric("不足（計）", meta.get("shortage_units", "?"), help="満たせなかった人数（コマ単位）")
-        sc3.metric("希望違反（罰金）", meta.get("soft_penalty", "?"), help="ソフト制約の違反度。0が理想（スケールは曖昧なので参考値）")
+        shortage = meta.get("shortage_units", 0)
+        required = meta.get("required_units", 0)
+        if shortage == 0:
+            st.success(f"🏪 店舗の必要人数：✅ 満たせています（必要 {required} コマすべて充足）")
+        else:
+            st.warning(f"🏪 店舗の必要人数：⚠️ {shortage} コマ不足（必要 {required} コマ中）")
         st.caption(f"計算時間 {meta.get('elapsed_ms','?')}ms / 目的関数 {meta.get('objective','?')}（参考・小さいほど良い）")
 
         # ── 🛡️ 不変条件チェック（バリデータ・スコアとセットで） ──────

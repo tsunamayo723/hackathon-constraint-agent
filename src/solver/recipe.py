@@ -160,9 +160,16 @@ def validate_recipe(recipe: dict) -> tuple[bool, str]:
             {"id": "p1", "name": "A", "role_id": "r_lead", "skill_ids": ["sk_bar"]},
             {"id": "p2", "name": "B", "role_id": "r_staff", "skill_ids": []},
             {"id": "p3", "name": "C", "role_id": "r_staff", "skill_ids": []},
+            {"id": "p4", "name": "D", "role_id": "r_newbie", "skill_ids": []},
+            {"id": "p5", "name": "E", "role_id": "r_owner", "skill_ids": []},
         ],
         "positions": [{"id": "pos_hall", "name": "ホール"}],
-        "roles": [{"id": "r_lead", "name": "リーダー"}, {"id": "r_staff", "name": "スタッフ"}],
+        "roles": [
+            {"id": "r_lead", "name": "リーダー"},
+            {"id": "r_staff", "name": "スタッフ"},
+            {"id": "r_newbie", "name": "新人"},
+            {"id": "r_owner", "name": "オーナー"},
+        ],
         "skills": [{"id": "sk_bar", "name": "バー"}],
     })
     ctx = SolverContext(

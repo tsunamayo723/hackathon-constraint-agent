@@ -174,6 +174,16 @@ def clarify_note(body: dict = Body(openapi_examples=_clarify_examples)):
         logger.exception("要望チャットに失敗")
         raise HTTPException(status_code=502, detail=f"会話に失敗しました: {exc}")
 
+    # ラリー上限: 何度も聞き返して堂々巡りになるのを防ぐ（反映不可なら正直に打ち切る）
+    MAX_USER_TURNS = 4
+    user_turns = sum(1 for m in history if (m or {}).get("role") == "user") + 1
+    if turn.needs_clarification and user_turns >= MAX_USER_TURNS:
+        turn.needs_clarification = False
+        if not turn.rules:
+            _note = ("※ うまく要望を確定できませんでした。今の仕組みでは反映が難しいか、"
+                     "情報が足りないようです。言い方を変えるか、管理者にご相談ください。")
+            turn.reply = (turn.reply + "\n\n" + _note) if turn.reply else _note
+
     # 確定したら：queueルール→承認キュー(④) / ask_manager→責任者への質問 として登録
     queued = 0
     asked = 0

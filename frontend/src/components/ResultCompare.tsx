@@ -14,8 +14,8 @@ type Props = {
   result: PreviewResult
 }
 
-// 日ごとnoteの分類の見た目
-const NOTE_STYLE: Record<NoteResultItem["status"], { icon: string; cls: string; label: string }> = {
+// 日ごとnoteの分類の見た目（結果画面 ResultStep でも再利用）
+export const NOTE_STYLE: Record<NoteResultItem["status"], { icon: string; cls: string; label: string }> = {
   applied: { icon: "✅", cls: "border-emerald-200 bg-emerald-50 text-emerald-800", label: "時間を補正" },
   pending: { icon: "🆕", cls: "border-violet-200 bg-violet-50 text-violet-800", label: "新ルール候補 → 管理者の承認待ちへ" },
   unreflected: { icon: "⚠️", cls: "border-amber-200 bg-amber-50 text-amber-800", label: "申し送り（シフトには未反映）" },

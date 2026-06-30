@@ -21,6 +21,7 @@ from pydantic import BaseModel
 
 from src import llm
 
+from ._context import masters_context
 from .base import GeminiAgent
 
 
@@ -58,5 +59,6 @@ class ChatAgent(GeminiAgent):
         return self.run_structured(
             requirements=requirements,
             scope="店舗全体" if scope == "store" else "本人",
+            masters=masters_context(),
             history_json=json.dumps(history or [], ensure_ascii=False),
         )

@@ -8,6 +8,9 @@ $requirements
 - これまでの会話（role が "user"/"ai" の配列。空なら初回）:
 $history_json
 
+# 店舗のマスタ（実在のID。「新人」など役職全体を指す要望は、ここの role_id を who="role" で使う）
+$masters
+
 # やること
 1. 要望に**曖昧な点**があれば、**1度に1つだけ**短く質問する（needs_clarification=true、rules は空）。
    - 「早番希望」→ 早番は何時から何時まで？
@@ -48,12 +51,14 @@ $history_json
 - まず**曖昧点を全て質問してから**確定する。確定後の rule には聞き取った値を必ず反映する。
 
 # queue ルールの recipe_json（できるだけ埋める＝②で情報を引き切る）
-queue のルールは、**聞き取ったパラメータ込みの完成レシピ**を recipe_json（JSON文字列）に入れる
-（who="person"、person_id は空のまま。後でシステムが入れる）。
+queue のルールは、**聞き取ったパラメータ込みの完成レシピ**を recipe_json（JSON文字列）に入れる。
+- 個人の要望は who="person"（person_id は空のまま。後でシステムが入れる）。
+- 「新人は…」のように**役職全体**を指す要望は who="role" にして role_id を上のマスタから入れる（person_id は不要）。
 聞き取りが要るパラメータ（「遅番＝何時から？」等）は **先に質問してから** 埋める。
 操作: forbid(入れない) / require(最低人数) / limit_count(日数上限) / penalize(なるべく避ける) /
       prefer(なるべく入れる) / rest_after_late(前日が band の遅番なら翌日休み)
-選択子: when("weekday"+weekday 0=月..6=日。複数曜日は配列可・例 [5,6]=土日 / "date"+date / "date_range"+date_start,date_end / "always") /
+選択子: who("person"+person_id ＝特定の人 / "role"+role_id ＝その役職全員（例 新人）/ "skill"+skill_id ＝そのスキル保持者) /
+        when("weekday"+weekday 0=月..6=日。複数曜日は配列可・例 [5,6]=土日 / "date"+date / "date_range"+date_start,date_end / "always") /
         band("all_day" / "window"+time_start,time_end "HH:MM") / max / weight(50-1000) / period("month"/"week"/"total")
 例:
 - 毎週水曜終日NG → {"operation":"forbid","who":"person","when":"weekday","weekday":2,"band":"all_day"}
@@ -61,6 +66,7 @@ queue のルールは、**聞き取ったパラメータ込みの完成レシピ
 - 22時以降の遅番は月3回まで → {"operation":"limit_count","who":"person","when":"always","band":"window","time_start":"22:00","time_end":"29:00","max":3,"period":"month"}
 - 前日が遅番なら翌日休み → {"operation":"rest_after_late","who":"person","band":"window","time_start":"18:00","time_end":"22:00","weight":600}
 - できれば早番 → {"operation":"prefer","who":"person","band":"window","time_start":"11:00","time_end":"15:00","weight":500}
+- 新人は遅番(22時以降)に入れない → {"operation":"forbid","who":"role","role_id":"r_newbie","band":"window","time_start":"22:00","time_end":"24:00"}
 
 # 出力（指定スキーマのJSON）
 - reply: 画面に出すあなたの返答（質問 or 整理結果のまとめ。日本語・常に）。

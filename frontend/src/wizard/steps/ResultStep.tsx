@@ -11,6 +11,7 @@ import type { ManagerQuestion, StoreCompare } from "../../api"
 import { datesInPeriod, mmdd, weekdayLabel } from "../../lib/shift"
 import { personInfo } from "../../lib/people"
 import { useWizard } from "../context"
+import { NOTE_STYLE } from "../../components/ResultCompare"
 import type { AssignmentDict, PendingType } from "../../types"
 
 function timeStr(a: AssignmentDict) {
@@ -132,6 +133,7 @@ export function ResultStep() {
   const allDates = datesInPeriod(frame)
   const beforeTimes = data ? indexTimes(data.before.assignments) : new Map<string, string>()
   const afterTimes = data ? indexTimes(data.after.assignments) : new Map<string, string>()
+  const nameOf = (id: string) => masters.persons.find((p) => p.id === id)?.name ?? id
 
   // どちらかで1コマでも入っている人だけ表示
   const shownPersons = masters.persons.filter((p) =>
@@ -186,14 +188,12 @@ export function ResultStep() {
 
       {data && (
         <div className="space-y-4">
-          {/* サマリ（両方の充足を並べる） */}
-          <div className="flex flex-wrap items-center gap-3 rounded-lg bg-gray-50 p-3 text-sm">
-            <span className="text-gray-600">充足スコア</span>
-            <span>考慮なし：<b>{data.store.before_coverage ?? "—"}</b></span>
-            <span className="text-gray-300">→</span>
-            <span className="text-emerald-700">考慮あり：<b>{data.store.after_coverage ?? "—"}</b></span>
-            <span className={"ml-auto text-xs " + (data.store.after_ok ? "text-emerald-700" : "text-amber-700")}>
-              {data.store.after_ok ? "✅ 必要人数を満たせています" : "⚠️ 一部で不足"}
+          {/* サマリ（充足スコアの数値は廃止。必要人数を満たせたかを一言で） */}
+          <div className="rounded-lg bg-gray-50 p-3 text-sm">
+            <span className={data.store.after_ok ? "text-emerald-700" : "text-amber-700"}>
+              {data.store.after_ok
+                ? "✅ 店舗の必要人数を満たせています"
+                : "⚠️ 一部の時間帯で必要人数に届いていません（下の申し送りを確認してください）"}
             </span>
           </div>
           <p className="text-xs text-gray-400">
@@ -254,6 +254,32 @@ export function ResultStep() {
               )
             })}
           </div>
+
+          {/* 🤖 備考(note)をAIがどう扱ったか（✅反映 / 🆕承認待ち / ⚠️無視）。無視は明示する */}
+          {data.note_results && data.note_results.length > 0 && (
+            <div className="space-y-2 rounded-lg border border-gray-200 bg-white p-3">
+              <p className="text-sm font-semibold text-gray-800">🤖 備考（メモ）の扱い</p>
+              <ul className="space-y-1.5">
+                {data.note_results.map((n, i) => {
+                  const s = NOTE_STYLE[n.status]
+                  return (
+                    <li key={i} className={"rounded-lg border p-2 text-xs " + s.cls}>
+                      <span className="mr-1">{s.icon}</span>
+                      <span className="font-medium">{nameOf(n.person_id)}・{mmdd(n.date)}</span>
+                      <span className="ml-1 opacity-70">[{s.label}]</span>
+                      <span className="ml-1 opacity-90">「{n.note}」</span>
+                    </li>
+                  )
+                })}
+              </ul>
+              {data.note_results.some((n) => n.status === "unreflected") && (
+                <p className="text-xs text-amber-700">
+                  ⚠️ 上の「申し送り」の備考はシフトに反映していません（時間補正にもルールにもできなかったもの）。
+                  必要なら下のコメント欄から店舗ルールとして送ってください。
+                </p>
+              )}
+            </div>
+          )}
 
           {/* 🤖 AIからの申し送り（未反映・要確認・悩んだ点）＋ コメントで再実行 */}
           <div className="space-y-3 rounded-lg border border-amber-200 bg-amber-50 p-3">

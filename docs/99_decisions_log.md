@@ -418,6 +418,38 @@
 
 ---
 
+## 2026-06-30: デモ磨き上げ 4 件（ソルバー1ライン化・note表示・まとめチャット・役職参照）
+
+ユーザーの改修要望4件に対応。1・2・4 は前セッションで実装済みだったものを検証してまとめ、3 を新規実装。
+
+- **要望1: シフトは「連続1ライン・基本最大8時間」を前提条件に**（現実の実態に合わせ、2回に分けて入る細切れを廃止）。
+  `src/solver/engine.py` の `_apply_shift_shape` を `SHIFT_MAX_BLOCKS_PER_DAY=1`＋`SHIFT_MAX_HOURS_PER_DAY=8`（在席コマ合計に上限）に変更。
+  これに合わせ**デモデータを店ごとに営業時間をばらけさせて再生成**（cafe 11–20 / diner 11–23 / izakaya 16–24）。
+  店舗選択時に**営業時間・必要人数（基本編成）を表示**（`/setup/demo-patterns` が operating_window＋headcounts を返し、StoreStep/setup.py が表示）。
+  `scripts/verify_demo_data.py` で3パターンとも「水曜before配置／after消去／店舗不足0」を実測 PASS。
+- **要望2: 結果画面で note の扱いを全件表示し、無視は明示／充足スコア廃止**。
+  `ResultStep.tsx` が `store-compare` の `note_results` を「🤖 備考の扱い」で全件表示（✅時間補正/🆕承認待ち/⚠️申し送り）、
+  `unreflected` があれば下部に明示。意味の薄かった「充足スコア(100点満点)」は React/Streamlit 双方から削除し、
+  「必要人数を満たせています/⚠️N コマ不足」の一言表示に。
+- **要望3: 生成ハンドラの作り直し相談を「個別→全部まとめて1つの会話」に**（新規）。
+  従来は④承認画面でルールごとに feedback 入力欄が並び、`/generate?feedback=` を1件ずつ叩く形（履歴なし）だった。
+  これを**1つのマルチターン会話**に統一。新設 `POST /admin/pending-types/chat`（ステートレス・履歴は毎回渡す＝
+  提出者チャット `/chat/clarify-note` と同方式）。`RecipeChatAgent`(Pro)＋`recipe_chat.txt` が生成済みルール一覧＋会話履歴を読み、
+  **どのルールの話かを判断して該当ルールのレシピだけ作り直す**。承認/却下はルール単位のまま。
+  生成結果の保存は `/generate` と共通の `_store_generated()` に切り出して再利用。
+  実Geminiで疎通確認（単一更新＋複数ルールの選択的ルーティング＝指定1件だけ更新・他は不変）。
+- **要望4: 反映できない要望は正直に伝える／同内容ラリーを防ぐ／役職(新人)をDB参照**。
+  `routes_chat.py` に `MAX_USER_TURNS=4`（上限で「反映が難しい/情報不足」を伝えて打ち切り）。
+  `_context.masters_context()` が**在籍スタッフ＋役職ごとの所属**を出力し、`chat_clarify.txt` が「新人は…」を
+  `who="role"`+role_id で出すよう指示。経路: AI→`_chat_recipe`（role_id 保持）→承認キュー→`_resolve_persons`（recipe.py）。
+- **検証時の追加修正（堅牢化）**: まとめチャットの疎通で、AIが例レシピに実在ID `person_id="p01"` を入れると
+  `validate_recipe`（固定検証シナリオは p1〜p5）で「対象が居ない」偽陰性になることを発見。`_store_generated` で
+  検証前に who=person/pair の person_id を検証用(p1/p2)へそろえる正規化を追加（`_chat_recipe` と同じ発想・`/generate` 経路も堅牢化）。
+- **影響範囲**: storage 公開APIは不変。全105テスト緑・`scripts/verify_demo_data.py` PASS・`npm run build` 通過。
+- 詳細: `docs/spec/04_admin_workflow.md`（まとめチャット）／`docs/spec/06_solver.md`（シフトの形）／`docs/spec/10_submitter_ui.md`。
+
+---
+
 ## 今後追記用フォーマット
 
 ```markdown

@@ -3,6 +3,8 @@
 *最終更新: 2026-05-27*
 *ステータス: 全項目確定*
 
+> ℹ️ **一部変更あり**: 提出者UIは Streamlit →**React/Vite**（2026-06-17・spec/10）。ハンドラ生成は exec+subprocess →**レシピ方式**（spec/09）。最新は spec/ と [99_decisions_log.md] が正。
+
 ---
 
 ## 全体構成

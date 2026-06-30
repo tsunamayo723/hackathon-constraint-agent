@@ -2,6 +2,8 @@
 
 *最終更新: 2026-06-10*
 
+> ℹ️ **更新あり**: 承認キュー/クラスタリング/params化は現役。ただし `suggested_handler_code`（Python生成）前提の記述は**レシピ方式（spec/09）に置換済**。
+
 ---
 
 ## 概要
@@ -112,6 +114,20 @@
 1. status を "rejected" に変更
 2. ユーザーに「この要望は対応できません」と通知（実装予定）
 
+### POST /admin/pending-types/chat（まとめチャット・2026-06-30）
+
+生成済みルール**全部を1つの会話**で作り直す（ルールごとに別欄ではなく横断）。
+ステートレス（会話履歴 `history` は毎回渡す＝提出者チャット `/chat/clarify-note` と同方式）。
+
+- body: `{ message: 管理者の発言, history: [{role:"user"|"ai", text}] }`
+- 処理: `status="pending"` かつ `test_results` あり（＝生成済み）の pending を集め、`RecipeChatAgent`(Pro)＋
+  `prompts/recipe_chat.txt` に「ルール一覧（req_id付き）＋会話履歴＋実マスタ」を渡す。AIが**どのルールの話かを判断**し、
+  直すルールだけ `updates`（req_id＋新レシピ）で返す。各 update は `/generate` と共通の `_store_generated()` で
+  保存＋`validate_recipe` 検証（who=person/pair の person_id は検証用 p1/p2 に正規化して偽陰性を防ぐ）。
+- 返り値: `{ reply, updated_ids（作り直した req_id）, history（次回そのまま渡す） }`。
+- 承認/却下はこのAPIでは行わない（従来どおり `approve|reject` をルール単位で呼ぶ）。
+- Gemini未設定→400／メッセージ空→422／生成済みルール無し→400（先に生成を促す）。
+
 ---
 
 ## クラスタリング（同種の未知タイプをまとめる）
@@ -152,6 +168,11 @@
 - 承認/却下は `POST /admin/pending-types/{id}/approve|reject` を呼ぶ。
 - **JSON表示トグル**を必ず付ける（生JSONでの確認を好むため）。
 - A1完成後は `suggested_handler_code`（シンタックスハイライト）と `test_results` を展開表示。
+
+> **提出者UI（React・ApproveStep）の「作り直し相談」（2026-06-30）**: 以前はルールごとに feedback 入力欄が
+> 並んでいたが、**画面下部の「まとめチャット」1つ**に統一した（`POST /admin/pending-types/chat`）。
+> 1つの会話でどのルールの話かをAIが判断して該当ルールだけ作り直す。承認/却下・レシピ/テスト表示はルール単位のまま。
+> 生成（未生成→生成）は「🤖 全部のレシピを生成」ボタンが担い、チャットは仕上げ専念。
 
 ---
 

@@ -39,7 +39,8 @@ DEFAULT_SEED = 42
 
 # 通常シフトの形（全員一律の既定ルール）
 SHIFT_MIN_BLOCK_SLOTS = 6        # 1シフトの最低コマ数（30分×6＝3時間）
-SHIFT_MAX_BLOCKS_PER_DAY = 2     # 1日の出勤回数（連続ブロック数）の上限
+SHIFT_MAX_BLOCKS_PER_DAY = 1     # 1日は連続1ライン（2回に分けて入る細切れを禁止）。実態に合わせた前提条件
+SHIFT_MAX_HOURS_PER_DAY = 8      # 1日の労働時間の上限（基本8時間）。連続1ラインと合わせて「普通のフルシフト1本」を表す
 SHIFT_SHORT_BLOCK_PENALTY = 300  # 3時間未満ブロックの減点（不足5000より小さく＝どうしても解けない時は破る）
 
 
@@ -101,7 +102,7 @@ def solve(
     # availability は全件出そろってから適用（枠外コマを0に固定）
     _apply_availability(ctx)
 
-    # 通常シフトの形（最低3時間＝soft / 1日2回まで＝hard）を全員一律で課す
+    # 通常シフトの形（連続1ライン・最大8時間＝hard / 最低3時間＝soft）を全員一律で課す
     _apply_shift_shape(ctx)
 
     # ── 目的関数 ────────────────────────────────────────────────
@@ -232,16 +233,22 @@ def _apply_availability(ctx: SolverContext) -> None:
 def _apply_shift_shape(ctx: SolverContext) -> None:
     """通常シフトの形を全員一律で課す（軽量版）。
 
-      - 1日の出勤回数（連続ブロック数）≤ SHIFT_MAX_BLOCKS_PER_DAY（Hard）
-        … 「1日に何回も入る」細切れを防ぐ。立ち上がり start[k] を数える。
+      - 1日は連続1ライン（連続ブロック数 ≤ SHIFT_MAX_BLOCKS_PER_DAY=1）（Hard）
+        … 「1日に2回に分けて入る」細切れを禁止。立ち上がり start[k] を数える。
+      - 1日の労働時間 ≤ SHIFT_MAX_HOURS_PER_DAY（基本8時間）（Hard）
+        … 在席コマ数の合計に上限。営業時間が長くても1人は最大8時間まで。
       - 出勤する日は合計 ≥ SHIFT_MIN_BLOCK_SLOTS コマ（3時間）（Soft・足りないと減点）
         … 「通常シフトは3時間以上」。不足(5000)より小さい減点なので、
           どうしても解けない時だけ破られる。
+      - 1日は1ポジション（Hard）。
 
     重いブロック長検出は避け、合計コマ数ベースにして高速化している。
     """
     model = ctx.model
     n = len(ctx.slots)
+    # スロット1コマの長さ（分）から「8時間 = 何コマ」を算出
+    slot_min = (ctx.slots[0].end_min - ctx.slots[0].start_min) if ctx.slots else 30
+    max_slots_per_day = (SHIFT_MAX_HOURS_PER_DAY * 60) // slot_min
     for pid in ctx.person_ids:
         for di in range(len(ctx.days)):
             pres = [ctx.present[(pid, di, ctx.slots[k].index)] for k in range(n)]
@@ -252,7 +259,10 @@ def _apply_shift_shape(ctx: SolverContext) -> None:
             model.Add(shortfall >= SHIFT_MIN_BLOCK_SLOTS * wd - sum(pres))
             ctx.add_penalty(SHIFT_SHORT_BLOCK_PENALTY, shortfall)
 
-            # ② 1日のブロック数 ≤ 上限（hard）: 立ち上がりの数で数える（細切れ防止＝連続性）
+            # ② 1日の労働時間 ≤ 8時間（hard）: 在席コマ合計に上限
+            model.Add(sum(pres) <= max_slots_per_day)
+
+            # ③ 1日は連続1ライン（hard）: 立ち上がりの数 ≤ 上限（細切れ・2回入りを防ぐ）
             starts = []
             for k in range(n):
                 st = model.NewBoolVar(f"start_{pid}_{di}_{k}")
@@ -265,7 +275,7 @@ def _apply_shift_shape(ctx: SolverContext) -> None:
                 starts.append(st)
             model.Add(sum(starts) <= SHIFT_MAX_BLOCKS_PER_DAY)
 
-            # ③ 1日は1ポジション（hard）: 30分ごとのポジション交代を防ぐ
+            # ④ 1日は1ポジション（hard）: 30分ごとのポジション交代を防ぐ
             pos_used = []
             for pos_id in ctx.position_ids:
                 u = model.NewBoolVar(f"uses_{pid}_{di}_{pos_id}")

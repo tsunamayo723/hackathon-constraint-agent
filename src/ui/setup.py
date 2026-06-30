@@ -61,14 +61,25 @@ except requests.exceptions.ConnectionError:
     )
 
 if _demo_patterns:
+    _by_key = {p["key"]: p for p in _demo_patterns}
     _labels = {p["key"]: p["label"] for p in _demo_patterns}
-    _descs = {p["key"]: p["description"] for p in _demo_patterns}
     demo_key = st.selectbox(
         "デモパターンを選択",
         options=list(_labels.keys()),
         format_func=lambda k: _labels[k],
     )
-    st.caption(_descs.get(demo_key, ""))
+    _sel = _by_key.get(demo_key, {})
+    st.caption(_sel.get("description", ""))
+    _ow = _sel.get("operating_window")
+    if _ow:
+        st.markdown(f"🕐 **営業時間**：{_ow['open']}〜{_ow['close']}")
+    _hcs = _sel.get("headcounts") or []
+    if _hcs:
+        _lines = "  \n".join(
+            f"- {h['slot_label']}（{h['time_start']}–{h['time_end']}）{h['position']} {h['count']}名"
+            for h in _hcs
+        )
+        st.markdown(f"👥 **必要人数（基本編成）**：  \n{_lines}")
 
     if st.button("📥 このデモデータを投入する", type="primary"):
         try:

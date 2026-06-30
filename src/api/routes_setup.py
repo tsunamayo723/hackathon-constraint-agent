@@ -231,7 +231,11 @@ def _read_csv(path: Path) -> list[dict]:
 @router.get(
     "/demo-patterns",
     summary="投入できるデモデータの一覧",
-    description="data/demo/ にあるデモパターン（key/label/description）を返します。Streamlitや提出者UIのプルダウン用。",
+    description=(
+        "data/demo/ にあるデモパターンを返します（key/label/description＋営業時間＋必要人数の概要）。"
+        "Streamlitや提出者UIのプルダウン用。選択時に『この店は何時〜何時／何人必要か』を見せるため、"
+        "営業時間(operating_window)と基本の必要人数(headcounts)も含めます。"
+    ),
 )
 def list_demo_patterns():
     patterns = []
@@ -241,10 +245,35 @@ def list_demo_patterns():
             if not meta_path.exists():
                 continue
             meta = json.loads(meta_path.read_text(encoding="utf-8"))
+            ow = meta.get("frame", {}).get("operating_window", {}) or {}
+
+            # ポジションIDを名前に（選択時点ではマスタ未投入なのでCSVから引く）
+            pos_path = d / "positions.csv"
+            pos_name = {r["id"]: r["name"] for r in _read_csv(pos_path)} if pos_path.exists() else {}
+
+            # 必要人数の概要（基本編成＝date空の行のみ。特定日上書きは概要から除外）
+            headcounts = []
+            hc_path = d / "headcounts.csv"
+            if hc_path.exists():
+                for r in _read_csv(hc_path):
+                    if (r.get("date") or "").strip():
+                        continue
+                    headcounts.append({
+                        "slot_label": r["slot_label"],
+                        "time_start": r["time_start"],
+                        "time_end": r["time_end"],
+                        "position": pos_name.get(r["position_id"], r["position_id"]),
+                        "count": int(r["count"]),
+                    })
+
             patterns.append({
                 "key": meta.get("key", d.name),
                 "label": meta.get("label", d.name),
                 "description": meta.get("description", ""),
+                "operating_window": (
+                    {"open": ow.get("open"), "close": ow.get("close")} if ow else None
+                ),
+                "headcounts": headcounts,
             })
     return {"patterns": patterns}
 

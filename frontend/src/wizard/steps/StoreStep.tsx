@@ -37,7 +37,7 @@ export function StoreStep() {
     }
   }
 
-  const desc = patterns.find((p) => p.key === sel)?.description ?? ""
+  const selected = patterns.find((p) => p.key === sel)
 
   return (
     <div className="space-y-4">
@@ -67,7 +67,32 @@ export function StoreStep() {
           {busy ? "投入中…" : "この店舗で進む"}
         </button>
       </div>
-      {desc && <p className="text-xs text-gray-500">{desc}</p>}
+      {selected?.description && <p className="text-xs text-gray-500">{selected.description}</p>}
+
+      {selected && (selected.operating_window || (selected.headcounts?.length ?? 0) > 0) && (
+        <div className="space-y-1 rounded-lg border border-gray-200 bg-white p-3 text-xs text-gray-600">
+          {selected.operating_window && (
+            <div>
+              🕐 営業時間：
+              <span className="font-medium text-gray-800">
+                {selected.operating_window.open}〜{selected.operating_window.close}
+              </span>
+            </div>
+          )}
+          {selected.headcounts && selected.headcounts.length > 0 && (
+            <div>
+              👥 必要人数（基本編成）：
+              <ul className="ml-4 mt-0.5 list-disc">
+                {selected.headcounts.map((h, i) => (
+                  <li key={i}>
+                    {h.slot_label}（{h.time_start}–{h.time_end}）{h.position} {h.count}名
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+        </div>
+      )}
 
       {msg && <p className="text-sm text-emerald-700">✅ {msg}</p>}
       {err && <p className="text-sm text-red-600">⚠️ {err}</p>}

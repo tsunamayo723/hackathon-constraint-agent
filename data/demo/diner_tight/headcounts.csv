@@ -1,5 +1,5 @@
 date,slot_label,time_start,time_end,position_id,count
 ,ランチ,11:00,15:00,pos_counter,1
 ,ランチ,11:00,15:00,pos_floor,2
-,ディナー,17:00,22:00,pos_counter,2
-,ディナー,17:00,22:00,pos_floor,2
+,ディナー,18:00,23:00,pos_counter,1
+,ディナー,18:00,23:00,pos_floor,3

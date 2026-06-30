@@ -1,6 +1,8 @@
 import { useEffect, useState } from "react"
-import { approvePending, generatePending, getPendingType, getPendingTypes, rejectPending } from "../../api"
-import type { PendingType } from "../../types"
+import {
+  approvePending, generatePending, getPendingTypes, recipeChat, rejectPending,
+} from "../../api"
+import type { ChatMessage, PendingType } from "../../types"
 
 const REJECT_LABEL: Record<string, string> = {
   negotiation_dependent: "他者の希望に依存（交渉が必要）",
@@ -10,14 +12,18 @@ const REJECT_LABEL: Record<string, string> = {
   advanced_logic: "高度な条件ロジックが必要（現在の部品で表現不可）",
 }
 
-// ④ 承認キュー（L2の山場）— Pro生成→テスト→承認
+// ④ 承認キュー（L2の山場）— Pro生成→テスト→承認。作り直しの相談は下部の「まとめチャット」1つで行う。
 export function ApproveStep() {
   const [items, setItems] = useState<PendingType[]>([])
   const [loading, setLoading] = useState(false)
   const [working, setWorking] = useState<string | null>(null)
   const [err, setErr] = useState("")
   const [msg, setMsg] = useState("")
-  const [feedbacks, setFeedbacks] = useState<Record<string, string>>({})
+
+  // 生成済みルールを「全部まとめて」仕上げる会話（履歴はクライアントが保持し毎回渡す）
+  const [chat, setChat] = useState<ChatMessage[]>([])
+  const [chatInput, setChatInput] = useState("")
+  const [chatBusy, setChatBusy] = useState(false)
 
   async function fetchList() {
     setLoading(true)
@@ -33,17 +39,13 @@ export function ApproveStep() {
 
   useEffect(() => { fetchList() }, [])
 
-  function replaceItem(updated: PendingType) {
-    setItems((list) => list.map((it) => (it.id === updated.id ? updated : it)))
-  }
-
   async function generate(id: string) {
     setWorking(id)
     setErr("")
     setMsg("")
     try {
-      await generatePending(id, feedbacks[id] || "")
-      replaceItem(await getPendingType(id))
+      await generatePending(id, "")
+      await fetchList()
     } catch (e) {
       setErr(e instanceof Error ? e.message : "生成に失敗しました")
     } finally {
@@ -88,6 +90,34 @@ export function ApproveStep() {
       setWorking(null)
     }
   }
+
+  // まとめチャット送信：AIがどのルールの話かを判断して該当カードを作り直す
+  async function sendChat() {
+    const text = chatInput.trim()
+    if (!text || chatBusy) return
+    setChatBusy(true)
+    setErr("")
+    setMsg("")
+    // 楽観的に自分の発言を出す
+    setChat((c) => [...c, { role: "user", text }])
+    setChatInput("")
+    try {
+      const res = await recipeChat(text, chat)
+      setChat(res.history) // サーバが返した正の履歴（user＋ai）に置き換え
+      await fetchList() // 作り直したレシピを一覧に反映
+      if (res.updated_ids.length > 0) {
+        setMsg(`🔄 ${res.updated_ids.length}件のルールを作り直しました`)
+      }
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : "相談に失敗しました")
+      setChat((c) => c.slice(0, -1)) // 失敗したら楽観表示を取り消す
+      setChatInput(text)
+    } finally {
+      setChatBusy(false)
+    }
+  }
+
+  const hasGenerated = items.some((it) => !!it.test_results)
 
   return (
     <div className="space-y-4">
@@ -195,30 +225,6 @@ export function ApproveStep() {
                       </>
                     )}
 
-                    {/* 回答して再生成（却下や懸念・テスト不合格に応えて作り直す） */}
-                    <div className="rounded-lg border border-blue-200 bg-blue-50 p-2.5">
-                      <p className="mb-1.5 text-xs font-medium text-blue-800">
-                        🤖 AIに追加で伝えて作り直す（却下・懸念・テスト不合格があればここで回答）
-                      </p>
-                      <div className="flex gap-2">
-                        <input
-                          value={feedbacks[it.id] ?? ""}
-                          onChange={(e) => setFeedbacks((f) => ({ ...f, [it.id]: e.target.value }))}
-                          onKeyDown={(e) => e.key === "Enter" && !busy && generate(it.id)}
-                          placeholder="例：遅番は18時以降／月曜だけ／新人はキッチン"
-                          className="flex-1 rounded-lg border border-blue-300 bg-white px-3 py-1.5 text-xs"
-                        />
-                        <button
-                          type="button"
-                          onClick={() => generate(it.id)}
-                          disabled={busy}
-                          className="rounded-lg bg-blue-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-blue-700 disabled:opacity-40"
-                        >
-                          {busy ? "再生成中…" : "🔄 再生成"}
-                        </button>
-                      </div>
-                    </div>
-
                     {/* 承認 / 却下 */}
                     <div className="flex gap-2 pt-1">
                       {it.expressible !== false && passed && (
@@ -245,6 +251,61 @@ export function ApproveStep() {
               </div>
             )
           })}
+        </div>
+      )}
+
+      {/* 🤖 まとめチャット：生成済みルール全部を1つの会話で作り直す */}
+      {items.length > 0 && (
+        <div className="rounded-lg border border-blue-200 bg-blue-50 p-3">
+          <p className="text-sm font-semibold text-blue-900">🤖 AIとまとめて相談（生成済みルール全部・履歴あり）</p>
+          {!hasGenerated ? (
+            <p className="mt-1 text-xs text-blue-700">
+              先に上の「🤖 全部のレシピを生成」でレシピを作ると、ここでまとめて調整できます。
+            </p>
+          ) : (
+            <>
+              <p className="mt-0.5 mb-2 text-xs text-blue-700">
+                例：「遅番の上限は月2回にして」「新人のは22時以降だけにして」。
+                どのルールの話かはAIが判断して、その分だけ作り直します。
+              </p>
+              {chat.length > 0 && (
+                <div className="mb-2 max-h-60 space-y-1.5 overflow-y-auto">
+                  {chat.map((m, i) => (
+                    <div key={i} className={m.role === "user" ? "text-right" : "text-left"}>
+                      <span
+                        className={
+                          "inline-block max-w-[85%] whitespace-pre-wrap rounded-lg px-2.5 py-1.5 text-xs " +
+                          (m.role === "user"
+                            ? "bg-blue-600 text-white"
+                            : "border border-blue-200 bg-white text-gray-800")
+                        }
+                      >
+                        {m.text}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              )}
+              <div className="flex gap-2">
+                <input
+                  value={chatInput}
+                  onChange={(e) => setChatInput(e.target.value)}
+                  onKeyDown={(e) => e.key === "Enter" && sendChat()}
+                  disabled={chatBusy}
+                  placeholder="直したい内容を入力（例：遅番は月2回まで）"
+                  className="flex-1 rounded-lg border border-blue-300 bg-white px-3 py-1.5 text-xs"
+                />
+                <button
+                  type="button"
+                  onClick={sendChat}
+                  disabled={chatBusy || !chatInput.trim()}
+                  className="rounded-lg bg-blue-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-blue-700 disabled:opacity-40"
+                >
+                  {chatBusy ? "相談中…" : "送信"}
+                </button>
+              </div>
+            </>
+          )}
         </div>
       )}
     </div>

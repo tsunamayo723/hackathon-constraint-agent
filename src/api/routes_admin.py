@@ -10,7 +10,7 @@ import logging
 from datetime import datetime
 from typing import Optional
 
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, Body, HTTPException, Query
 
 from src import llm
 from src.handlers import register_dynamic_handler
@@ -40,6 +40,65 @@ REJECT_LABELS = {
 
 def reject_label(category: Optional[str]) -> str:
     return REJECT_LABELS.get(category or "", "表現できない理由は不明")
+
+
+def _loads_dict(s: str) -> dict:
+    """JSON文字列を dict に。失敗時は空 dict（AIが空や壊れた文字列を返しても落ちない）。"""
+    try:
+        v = json.loads(s) if s else {}
+        return v if isinstance(v, dict) else {}
+    except json.JSONDecodeError:
+        return {}
+
+
+def _store_generated(req: PendingTypeRequest, gen) -> dict:
+    """生成結果（GeneratedRecipe / RecipeUpdate＝同形）を req に格納し、固定インタプリタで検証する。
+
+    `/generate`（1件生成）と まとめチャット（複数件まとめて更新）の**共通保存ロジック**。
+    任意コード実行は無く、レシピを validate_recipe に当てるだけ（安全）。
+    返り値（表示用）: {expressible, passed, detail, recipe}。
+    """
+    from src.solver.recipe import validate_recipe
+
+    req.confidence = max(0.0, min(1.0, gen.confidence))
+    req.concerns = list(gen.concerns)
+
+    # 表現できない＝正直に拒否（分かったフリをしない）。レシピは作らない。
+    if not gen.expressible:
+        req.expressible = False
+        req.reject_category = gen.reject_category or None
+        req.suggested_recipe = None
+        req.tested_params = None
+        req.test_results = TestResult(
+            passed=False, total=1, passed_count=0,
+            failed_cases=[f"表現できません（{reject_label(gen.reject_category)}）"],
+            detail=gen.explanation,
+        )
+        update_pending_request(req)
+        return {"expressible": False, "passed": None, "detail": gen.explanation, "recipe": None}
+
+    # 例レシピを固定インタプリタで検証（execしない）
+    recipe_template = _loads_dict(gen.recipe_template_json)
+    example_recipe = _loads_dict(gen.example_recipe_json)
+    # 検証シナリオは固定の人(p1/p2)。AIが実在ID(p01等)を入れても「対象が居ない」で
+    # 偽陰性にならないよう、who=person/pair の person_id を検証用にそろえる（_chat_recipe と同じ発想）。
+    _who = example_recipe.get("who", "person")
+    if _who == "person":
+        example_recipe["person_id"] = "p1"
+    elif _who == "pair":
+        example_recipe["person_id"] = "p1"
+        example_recipe["person_id_b"] = "p2"
+    ok, message = validate_recipe(example_recipe)
+    req.expressible = True
+    req.reject_category = None
+    req.suggested_recipe = recipe_template
+    req.tested_params = example_recipe
+    req.test_results = TestResult(
+        passed=ok, total=1, passed_count=1 if ok else 0,
+        failed_cases=[] if ok else [message], detail=message,
+    )
+    update_pending_request(req)
+    return {"expressible": True, "passed": ok, "detail": message, "recipe": recipe_template}
 
 
 @router.get(
@@ -133,68 +192,87 @@ def generate_handler(req_id: str, feedback: str = ""):
         logger.exception("レシピ生成に失敗")
         raise HTTPException(status_code=502, detail=f"レシピ生成に失敗しました: {exc}")
 
-    req.confidence = max(0.0, min(1.0, gen.confidence))
-    req.concerns = gen.concerns
+    # ② 生成結果を格納＋検証（まとめチャットと共通の保存ロジック）
+    res = _store_generated(req, gen)
 
-    # ②a 表現できない＝正直に拒否（分かったフリをしない）。レシピは作らない。
-    if not gen.expressible:
-        label = reject_label(gen.reject_category)
-        req.expressible = False
-        req.reject_category = gen.reject_category or None
-        req.suggested_recipe = None
-        req.tested_params = None
-        req.test_results = TestResult(
-            passed=False, total=1, passed_count=0,
-            failed_cases=[f"表現できません（{label}）"],
-            detail=gen.explanation,
-        )
-        update_pending_request(req)
+    # ②a 表現できない＝正直に拒否
+    if not res["expressible"]:
         return {
             "結果": "表現できませんでした",
             "タイプ名": req.suggested_type_name,
             "表現可能": False,
-            "理由": label,
+            "理由": reject_label(req.reject_category),
             "説明": gen.explanation,
             "自信度": req.confidence,
         }
 
-    # ②b 例レシピを取り出して固定インタプリタで検証（execしない）
-    def _loads(s: str) -> dict:
-        try:
-            v = json.loads(s) if s else {}
-            return v if isinstance(v, dict) else {}
-        except json.JSONDecodeError:
-            return {}
-
-    recipe_template = _loads(gen.recipe_template_json)
-    example_recipe = _loads(gen.example_recipe_json)
-    ok, message = validate_recipe(example_recipe)
-
-    # ③ 生成結果と検証結果をリクエストに格納
-    req.expressible = True
-    req.reject_category = None
-    req.suggested_recipe = recipe_template
-    req.tested_params = example_recipe
-    req.test_results = TestResult(
-        passed=ok,
-        total=1,
-        passed_count=1 if ok else 0,
-        failed_cases=[] if ok else [message],
-        detail=message,
-    )
-    update_pending_request(req)
-
+    # ②b 設計・検証完了
     return {
         "結果": "設計・検証完了",
         "タイプ名": req.suggested_type_name,
         "表現可能": True,
         "説明": gen.explanation,
-        "テスト": "合格" if ok else f"不合格（{message}）",
+        "テスト": "合格" if res["passed"] else f"不合格（{res['detail']}）",
         "自信度": req.confidence,
         "懸念点": req.concerns,
-        "レシピ": recipe_template,
-        "例レシピ": example_recipe,
+        "レシピ": res["recipe"],
+        "例レシピ": req.tested_params,
     }
+
+
+@router.post(
+    "/pending-types/chat",
+    summary="生成済みルールをまとめて1つの会話で仕上げる（L2・まとめチャット）",
+    description=(
+        "承認画面の**生成済みルール全部を1つの会話**で調整します（ルールごとに別々ではなく横断）。\n\n"
+        "管理者の発言を Gemini Pro が読み、**どのルールの話か**を判断して該当ルールのレシピだけ作り直します。\n"
+        "ステートレス（会話履歴 `history` は毎回渡す）。承認/却下はこのAPIでは行いません（従来どおり個別）。\n\n"
+        "body: `{ message: 管理者の発言, history: [{role:'user'|'ai', text}] }`\n"
+        "返り値: `{ reply, updated_ids（作り直したルールのreq_id）, history（次回そのまま渡す） }`"
+    ),
+)
+def chat_pending(body: dict = Body(...)):
+    from src.agents import RecipeChatAgent
+
+    message = ((body or {}).get("message") or "").strip()
+    history = (body or {}).get("history") or []
+    if not message:
+        raise HTTPException(status_code=422, detail="メッセージが空です。直したい内容を入力してください。")
+    if not llm.is_available():
+        raise HTTPException(
+            status_code=400,
+            detail="Gemini未設定のため相談できません（.env の GEMINI_API_KEY を設定してください）。",
+        )
+
+    # 会話の対象＝「生成済み（検証まで走った）」承認待ちルール。フロントの generated 判定と揃える。
+    reqs = [r for r in list_pending_requests(status="pending") if r.test_results is not None]
+    if not reqs:
+        raise HTTPException(
+            status_code=400,
+            detail="まだ仕上げ対象のルールがありません。先に「🤖 全部のレシピを生成」でレシピを作ってください。",
+        )
+
+    try:
+        turn = RecipeChatAgent().chat(reqs, message, history)
+    except Exception as exc:
+        logger.exception("まとめチャットに失敗")
+        raise HTTPException(status_code=502, detail=f"相談に失敗しました: {exc}")
+
+    # AIが「直す」と判断したルールだけ、共通保存ロジックで更新＋再検証
+    by_id = {r.id: r for r in reqs}
+    updated: list[str] = []
+    for up in turn.updates:
+        req = by_id.get(up.req_id)
+        if req is None:
+            continue  # 一覧に無いidは無視（AIの取り違え対策）
+        _store_generated(req, up)
+        updated.append(req.id)
+
+    new_history = list(history) + [
+        {"role": "user", "text": message},
+        {"role": "ai", "text": turn.reply},
+    ]
+    return {"reply": turn.reply, "updated_ids": updated, "history": new_history}
 
 
 def _paramize_and_store(req: PendingTypeRequest) -> int:

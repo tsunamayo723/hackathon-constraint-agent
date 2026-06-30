@@ -34,7 +34,20 @@ export const getDemoWishes = (personId: string) =>
   request<DemoWishes>(`/submit/demo-wishes?person_id=${encodeURIComponent(personId)}`)
 
 // デモパターン一覧／一括投入（店舗のセットアップ）
-export type DemoPattern = { key: string; label: string; description: string }
+export type DemoHeadcount = {
+  slot_label: string
+  time_start: string
+  time_end: string
+  position: string
+  count: number
+}
+export type DemoPattern = {
+  key: string
+  label: string
+  description: string
+  operating_window?: { open: string; close: string } | null
+  headcounts?: DemoHeadcount[]
+}
 export const getDemoPatterns = () => request<{ patterns: DemoPattern[] }>("/setup/demo-patterns")
 export const loadDemo = (pattern: string) =>
   request<{ 結果: string; 概要: Record<string, unknown> }>("/setup/load-demo", {
@@ -130,6 +143,18 @@ export const approvePending = (id: string) =>
   request<Record<string, unknown>>(`/admin/pending-types/${id}/approve`, { method: "POST" })
 export const rejectPending = (id: string) =>
   request<Record<string, unknown>>(`/admin/pending-types/${id}/reject`, { method: "POST" })
+
+// 生成済みルールを「全部まとめて1つの会話」で仕上げる（ステートレス・履歴は毎回渡す）
+export type RecipeChatResult = {
+  reply: string
+  updated_ids: string[] // 作り直したルールの req_id
+  history: ChatMessage[]
+}
+export const recipeChat = (message: string, history: ChatMessage[]) =>
+  request<RecipeChatResult>("/admin/pending-types/chat", {
+    method: "POST",
+    body: JSON.stringify({ message, history }),
+  })
 
 // 責任者への確認（需要に依存する要望：混みそう？等）
 export type ManagerQuestion = {
